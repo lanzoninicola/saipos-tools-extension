@@ -255,17 +255,19 @@ function extractDataFromDOM(): ConciliacaoData | { error: string } {
 
 // ── In-page review modal ──────────────────────────────────────────────────────
 
-let _overlay:    HTMLElement | null = null
-let _items:      ItemRow[]          = []
-let _extracted:  ConciliacaoData | null = null
-let _units:      MeasurementUnit[]  = []
+let _overlay:      HTMLElement | null = null
+let _items:        ItemRow[]          = []
+let _extracted:    ConciliacaoData | null = null
+let _units:        MeasurementUnit[]  = []
+let _ignoredRows:  Set<number>        = new Set()
 
 function closeReviewModal() {
   _overlay?.remove()
-  _overlay   = null
-  _items     = []
-  _extracted = null
-  _units     = []
+  _overlay      = null
+  _items        = []
+  _extracted    = null
+  _units        = []
+  _ignoredRows  = new Set()
 }
 
 // ── Modal helpers ─────────────────────────────────────────────────────────────
@@ -317,33 +319,61 @@ function showRedirectLink(url: string) {
 
 // ── Table builder ─────────────────────────────────────────────────────────────
 
-const COLUMNS = [
-  { key: 'nome' as keyof ItemRow,            label: 'ITEM NF',     width: '33%' },
-  { key: 'unidade_entrada' as keyof ItemRow, label: 'UN. NF',      width: '13%' },
-  { key: 'quantidade' as keyof ItemRow,      label: 'QTDE',        width: '12%' },
-  { key: 'valor_total' as keyof ItemRow,     label: 'VALOR',       width: '16%' },
-  { key: 'unidade_consumo' as keyof ItemRow, label: 'UN. CONSUMO', width: '26%' },
+const COLUMNS: Array<{ key: keyof ItemRow | null; label: string; width: string }> = [
+  { key: 'nome',            label: 'ITEM NF',     width: '43%' },
+  { key: 'unidade_entrada', label: 'UN. NF',      width: '10%' },
+  { key: 'quantidade',      label: 'QTDE',        width: '10%' },
+  { key: 'valor_total',     label: 'VALOR',       width: '12%' },
+  { key: 'unidade_consumo', label: 'UN. CONSUMO', width: '20%' },
+  { key: null,              label: '',             width: '5%'  },
 ]
+
+function applyIgnoredStyle(tr: HTMLTableRowElement, ignored: boolean) {
+  tr.style.opacity = ignored ? '0.35' : '1'
+  tr.style.pointerEvents = ignored ? 'none' : ''
+  // Keep the ignore button interactive even when row is ignored
+  const ignBtn = tr.querySelector(`[${EXT_ATTR}="ignore-btn"]`) as HTMLElement | null
+  if (ignBtn) {
+    ignBtn.style.pointerEvents = 'auto'
+    ignBtn.title  = ignored ? 'Incluir linha' : 'Ignorar linha'
+    ignBtn.style.color = ignored ? '#16a34a' : '#9ca3af'
+    ignBtn.textContent = ignored ? '↩' : '×'
+  }
+}
 
 function buildItemRow(item: ItemRow, rowIdx: number, units: MeasurementUnit[]): HTMLTableRowElement {
   const tr = document.createElement('tr')
-  if (rowIdx % 2 === 1) tr.style.background = '#fafafa'
+  tr.style.cssText = 'border-bottom:1px solid #f3f4f6;transition:opacity 0.15s;'
+  tr.addEventListener('mouseenter', () => { if (!_ignoredRows.has(rowIdx)) tr.style.background = '#f9fafb' })
+  tr.addEventListener('mouseleave', () => { tr.style.background = 'transparent' })
 
-  COLUMNS.forEach(col => {
+  COLUMNS.forEach((col, i) => {
     const td = document.createElement('td')
-    td.style.cssText = `padding:5px 6px;border-bottom:1px solid #f3f4f6;`
+    const isLast = i === COLUMNS.length - 1
+    td.style.cssText = `padding:6px 8px;vertical-align:middle;${!isLast ? 'border-right:1px solid #f0f0f0;' : ''}`
 
-    if (col.key === 'unidade_consumo') {
+    if (col.key === 'nome' || col.key === 'unidade_entrada') {
+      // Read-only display cell
+      td.style.cssText += 'line-height:1.35;'
+      td.style.fontSize = '12px'
+      td.style.color = '#111827'
+      td.textContent = item[col.key] ?? ''
+      const input = document.createElement('input')
+      input.type = 'hidden'
+      input.value = item[col.key] ?? ''
+      input.setAttribute(`${EXT_ATTR}-row`,   String(rowIdx))
+      input.setAttribute(`${EXT_ATTR}-field`, col.key)
+      td.appendChild(input)
+    } else if (col.key === 'unidade_consumo') {
       const sel = document.createElement('select')
       sel.setAttribute(`${EXT_ATTR}-row`,   String(rowIdx))
       sel.setAttribute(`${EXT_ATTR}-field`, 'unidade_consumo')
       sel.style.cssText = `width:100%;padding:4px 5px;border:1px solid #e5e7eb;border-radius:4px;font-family:${MONO};font-size:12px;background:#fff;color:#374151;outline:none;cursor:pointer;`
-
       const opts = units.length > 0 ? units : [{ id: 'UN', code: 'UN', name: 'Unidade' }]
       opts.forEach(u => {
         const opt = document.createElement('option')
         opt.value = u.id
-        opt.textContent = u.code
+        opt.textContent = u.name ? `${u.code} (${u.name})` : u.code
         if (item.unidade_consumo === u.id || item.unidade_consumo === u.code) opt.selected = true
         sel.appendChild(opt)
       })
@@ -351,6 +381,27 @@ function buildItemRow(item: ItemRow, rowIdx: number, units: MeasurementUnit[]): 
       sel.addEventListener('focus', () => { sel.style.borderColor = '#93c5fd' })
       sel.addEventListener('blur',  () => { sel.style.borderColor = '#e5e7eb' })
       td.appendChild(sel)
+    } else if (col.key === null) {
+      // Ignore toggle button
+      td.style.cssText += 'text-align:center;'
+      const btn = document.createElement('button')
+      btn.type = 'button'
+      btn.setAttribute(EXT_ATTR, 'ignore-btn')
+      btn.textContent = '×'
+      btn.title = 'Ignorar linha'
+      btn.style.cssText = `background:none;border:none;cursor:pointer;font-size:16px;line-height:1;color:#9ca3af;padding:2px 4px;border-radius:3px;transition:color 0.15s;`
+      btn.addEventListener('mouseenter', () => { if (!_ignoredRows.has(rowIdx)) btn.style.color = '#dc2626' })
+      btn.addEventListener('mouseleave', () => { btn.style.color = _ignoredRows.has(rowIdx) ? '#16a34a' : '#9ca3af' })
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation()
+        if (_ignoredRows.has(rowIdx)) {
+          _ignoredRows.delete(rowIdx)
+        } else {
+          _ignoredRows.add(rowIdx)
+        }
+        applyIgnoredStyle(tr, _ignoredRows.has(rowIdx))
+      })
+      td.appendChild(btn)
     } else {
       const input = document.createElement('input')
       input.type  = 'text'
@@ -361,8 +412,7 @@ function buildItemRow(item: ItemRow, rowIdx: number, units: MeasurementUnit[]): 
       input.addEventListener('focus', () => { input.style.borderColor = '#93c5fd'; input.style.background = '#fff' })
       input.addEventListener('blur',  () => { input.style.borderColor = 'transparent'; input.style.background = 'transparent' })
       input.addEventListener('input', () => {
-        (_items[rowIdx] as unknown as Record<string, string>)[col.key] = input.value
-        // Clear invalid highlight if user is typing
+        (_items[rowIdx] as unknown as Record<string, string>)[col.key!] = input.value
         if (input.style.borderColor === '#fca5a5') {
           input.style.borderColor = '#93c5fd'
           input.style.background  = '#fff'
@@ -379,19 +429,26 @@ function buildItemRow(item: ItemRow, rowIdx: number, units: MeasurementUnit[]): 
 
 function buildTable(items: ItemRow[], units: MeasurementUnit[]): HTMLElement {
   const wrapper = document.createElement('div')
-  wrapper.style.cssText = 'border:1px solid #e5e7eb;border-radius:7px;overflow:hidden;margin-bottom:14px;'
+  wrapper.style.cssText = 'margin-bottom:14px;overflow-y:auto;max-height:340px;'
 
   const table = document.createElement('table')
   table.setAttribute(EXT_ATTR, 'items-table')
-  table.style.cssText = 'width:100%;border-collapse:collapse;'
+  table.style.cssText = 'width:100%;border-collapse:collapse;table-layout:fixed;'
 
   const thead = document.createElement('thead')
   const hr = document.createElement('tr')
-  hr.style.cssText = 'background:#f9fafb;border-bottom:2px solid #e5e7eb;'
-  COLUMNS.forEach(col => {
+  COLUMNS.forEach((col, i) => {
     const th = document.createElement('th')
     th.textContent = col.label
-    th.style.cssText = `padding:7px 6px;text-align:left;font-family:${MONO};font-size:10px;font-weight:600;letter-spacing:0.8px;color:#9ca3af;width:${col.width};`
+    const isLast = i === COLUMNS.length - 1
+    th.style.cssText = [
+      `padding:6px 8px`, `text-align:left`,
+      `font-family:${MONO}`, `font-size:10px`, `font-weight:600`,
+      `letter-spacing:0.8px`, `color:#9ca3af`, `width:${col.width}`,
+      `position:sticky`, `top:0`, `z-index:1`, `background:#fff`,
+      `border-bottom:2px solid #e5e7eb`,
+      !isLast ? 'border-right:1px solid #e5e7eb' : '',
+    ].filter(Boolean).join(';')
     hr.appendChild(th)
   })
   thead.appendChild(hr)
@@ -402,6 +459,7 @@ function buildTable(items: ItemRow[], units: MeasurementUnit[]): HTMLElement {
   items.forEach((item, i) => tbody.appendChild(buildItemRow(item, i, units)))
   table.appendChild(tbody)
   wrapper.appendChild(table)
+
   return wrapper
 }
 
@@ -416,7 +474,7 @@ function updateSelectsWithUnits(units: MeasurementUnit[]) {
     units.forEach(u => {
       const opt = document.createElement('option')
       opt.value = u.id
-      opt.textContent = u.code
+      opt.textContent = u.name ? `${u.code} (${u.name})` : u.code
       if (current === u.id || current === u.code) opt.selected = true
       sel.appendChild(opt)
     })
@@ -462,8 +520,11 @@ function validate(): boolean {
   if (!_extracted?.numero_nfe?.trim()) { setFeedback('Número da NF-e não encontrado.', 'err'); return false }
 
   let hasInvalid = false
-  _overlay?.querySelectorAll(`input[${EXT_ATTR}-field]`).forEach(el => {
+  // Validate only non-ignored editable inputs
+  _overlay?.querySelectorAll(`input[type="text"][${EXT_ATTR}-field]`).forEach(el => {
     const input = el as HTMLInputElement
+    const rowIdx = parseInt(input.getAttribute(`${EXT_ATTR}-row`) ?? '0', 10)
+    if (_ignoredRows.has(rowIdx)) return
     if (!input.value.trim()) {
       input.style.borderColor = '#fca5a5'
       input.style.background  = '#fef2f2'
@@ -471,6 +532,8 @@ function validate(): boolean {
       hasInvalid = true
     }
   })
+  // Validate nome from _items for non-ignored rows
+  _items.forEach((item, i) => { if (!_ignoredRows.has(i) && !item.nome?.trim()) hasInvalid = true })
 
   if (hasInvalid) { setFeedback('Há campos obrigatórios em branco.', 'err'); return false }
   clearFeedback()
@@ -487,7 +550,7 @@ async function handleSend(settings: Settings) {
   const payload = {
     fornecedor:   _extracted!.fornecedor,
     numero_nfe:   _extracted!.numero_nfe,
-    items:        _items,
+    items:        _items.filter((_, i) => !_ignoredRows.has(i)),
     exportado_em: new Date().toISOString(),
   }
 
