@@ -19,7 +19,7 @@ export function useSettings(): UseSettingsReturn {
     })
   }, [])
 
-  const hasConfig = !!(settings?.endpoint && settings?.apiKey)
+  const hasConfig = !!(settings?.baseUrl && settings?.apiKey && settings?.endpointConciliacao)
 
   return { settings, loaded, hasConfig, setSettings }
 }

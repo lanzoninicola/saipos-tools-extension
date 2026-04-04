@@ -17,10 +17,11 @@ interface NfeStatus {
 }
 
 interface Settings {
-  baseUrl?: string
-  endpoint?: string
-  apiKey?: string
-  extraHeaders?: string
+  baseUrl?:              string
+  apiKey?:              string
+  extraHeaders?:        string
+  endpointConciliacao?: string
+  endpointUnits?:       string
 }
 
 interface ItemRow {
@@ -64,7 +65,7 @@ let _settingsPromise: Promise<Settings> | null = null
 function getSettings(): Promise<Settings> {
   if (!_settingsPromise) {
     _settingsPromise = new Promise(resolve =>
-      chrome.storage.sync.get(['baseUrl', 'endpoint', 'apiKey', 'extraHeaders'], data => resolve(data as Settings))
+      chrome.storage.sync.get(['baseUrl', 'apiKey', 'extraHeaders', 'endpointConciliacao', 'endpointUnits'], data => resolve(data as Settings))
     )
   }
   return _settingsPromise
@@ -94,12 +95,12 @@ type FetchResult = NfeStatus | FetchError
 async function fetchStatus(nfeNumber: string): Promise<FetchResult> {
   if (statusCache.has(nfeNumber)) return statusCache.get(nfeNumber)!
   const settings = await getSettings()
-  if (!settings.baseUrl || !settings.apiKey) {
-    return { status: 'error', error: 'baseUrl ou apiKey não configurados nas opções da extensão' }
+  if (!settings.baseUrl || !settings.apiKey || !settings.endpointConciliacao) {
+    return { status: 'error', error: 'Base URL, API Key ou endpoint de conciliação não configurados nas opções da extensão' }
   }
   return new Promise(resolve => {
     chrome.runtime.sendMessage(
-      { action: 'fetchNfeStatus', baseUrl: settings.baseUrl, apiKey: settings.apiKey, nfeNumber },
+      { action: 'fetchNfeStatus', baseUrl: settings.baseUrl, endpointConciliacao: settings.endpointConciliacao, apiKey: settings.apiKey, nfeNumber },
       (resp: { ok: boolean; data?: NfeStatus; error?: string }) => {
         if (chrome.runtime.lastError) {
           resolve({ status: 'error', error: chrome.runtime.lastError.message ?? 'Erro de comunicação com a extensão' })
@@ -115,12 +116,26 @@ async function fetchStatus(nfeNumber: string): Promise<FetchResult> {
 
 // ── Badge ─────────────────────────────────────────────────────────────────────
 
+;(function ensureSpinStyle() {
+  const id = 'sxt-spin-style'
+  if (!document.getElementById(id)) {
+    const s = document.createElement('style')
+    s.id = id
+    s.textContent = `@keyframes sxt-spin { to { transform: rotate(360deg); } } .sxt-spin { display:inline-block; animation: sxt-spin 0.8s linear infinite; }`
+    document.head.appendChild(s)
+  }
+})()
+
 function applyBadgeStatus(badge: HTMLElement, key: string) {
   const cfg = STATUS_CFG[key] ?? STATUS_CFG.error
   badge.style.background = cfg.color
   badge.title            = cfg.title
-  badge.textContent      = cfg.label
   badge.style.cursor     = cfg.pointer ? 'pointer' : 'default'
+  if (key === 'loading') {
+    badge.innerHTML = '<span class="sxt-spin" style="line-height:1;font-size:12px;">↻</span>'
+  } else {
+    badge.textContent = cfg.label
+  }
 }
 
 function createBadge(nfeNumber: string): HTMLElement {
@@ -422,7 +437,7 @@ async function loadUnitsInModal(settings: Settings) {
   if (statusEl) { statusEl.textContent = '⟳ Carregando unidades de consumo…'; statusEl.style.display = 'block' }
 
   chrome.runtime.sendMessage(
-    { action: 'fetchUnits', baseUrl: settings.baseUrl, apiKey: settings.apiKey, extraHeaders: settings.extraHeaders },
+    { action: 'fetchUnits', baseUrl: settings.baseUrl, endpointUnits: settings.endpointUnits, apiKey: settings.apiKey, extraHeaders: settings.extraHeaders },
     (resp: { ok: boolean; units?: MeasurementUnit[]; error?: string }) => {
       if (!_overlay) return  // modal was closed while loading
       if (chrome.runtime.lastError || !resp.ok) {
@@ -477,7 +492,7 @@ async function handleSend(settings: Settings) {
   }
 
   chrome.runtime.sendMessage(
-    { action: 'sendConciliacao', endpoint: settings.endpoint, apiKey: settings.apiKey, extraHeaders: settings.extraHeaders, payload },
+    { action: 'sendConciliacao', baseUrl: settings.baseUrl, endpointConciliacao: settings.endpointConciliacao, apiKey: settings.apiKey, extraHeaders: settings.extraHeaders, payload },
     (resp: { ok: boolean; status?: number; json?: { success: boolean; message?: string; url?: string } | null; rawText?: string; error?: string }) => {
       setSendBtnLoading(false)
       if (chrome.runtime.lastError || resp.error) {
@@ -508,7 +523,7 @@ async function showReviewModal(data: ConciliacaoData) {
   _items     = data.items.map(i => ({ ...i }))
 
   const settings  = await getSettings()
-  const hasConfig = !!(settings.endpoint && settings.apiKey)
+  const hasConfig = !!(settings.baseUrl && settings.apiKey && settings.endpointConciliacao)
 
   // Overlay backdrop
   const overlay = document.createElement('div')
@@ -615,7 +630,7 @@ async function showReviewModal(data: ConciliacaoData) {
   document.addEventListener('keydown', escHandler)
 
   // Load units asynchronously (don't block modal render)
-  if (settings.baseUrl && settings.apiKey) {
+  if (settings.baseUrl && settings.apiKey && settings.endpointUnits) {
     loadUnitsInModal(settings)
   }
 }
@@ -776,7 +791,7 @@ async function processRow(row: Element) {
   if (!nfeNumber) return
 
   const settings = await getSettings()
-  if (!settings.baseUrl || !settings.apiKey) return
+  if (!settings.baseUrl || !settings.apiKey || !settings.endpointConciliacao) return
 
   const badge = createBadge(nfeNumber)
 
@@ -813,20 +828,19 @@ async function processRow(row: Element) {
         e.stopPropagation()
         e.preventDefault()
         showPartialPopup(fresh, result)
-      })
+      }, true)
     }
   }
 
   badge.addEventListener('click', async (e) => {
     e.stopPropagation()
     e.preventDefault()
-    // If in error state, show debug popover instead of retrying immediately
     if (lastError) {
       showErrorPopup(badge, lastError, fetchedAt, settings, nfeNumber, doFetch)
     } else {
       await doFetch()
     }
-  })
+  }, true /* capture: intercepts before SAIPOS row handlers */)
   await doFetch()
 }
 

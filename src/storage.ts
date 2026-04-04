@@ -4,15 +4,18 @@
  */
 
 export interface Settings {
-  baseUrl?:      string  // e.g. https://meu-sistema.com  (no trailing slash)
-  endpoint?:     string  // full URL for POST conciliacao
-  apiKey?:       string
-  extraHeaders?: string
+  baseUrl?:              string  // e.g. https://meu-sistema.com  (sem barra final)
+  apiKey?:              string
+  extraHeaders?:        string
+  endpointConciliacao?: string  // e.g. /api/nfe/conciliacao
+  endpointUnits?:       string  // e.g. /api/measurement-units?scope=global&active=true
 }
+
+const KEYS: (keyof Settings)[] = ['baseUrl', 'apiKey', 'extraHeaders', 'endpointConciliacao', 'endpointUnits']
 
 export function getSettings(): Promise<Settings> {
   return new Promise((resolve) => {
-    chrome.storage.sync.get(['baseUrl', 'endpoint', 'apiKey', 'extraHeaders'], (data) => {
+    chrome.storage.sync.get(KEYS, (data) => {
       resolve((data as Settings) || {})
     })
   })
@@ -42,4 +45,11 @@ export function parseExtraHeaders(raw: string = ''): Record<string, string> {
     }
   })
   return result
+}
+
+/** Retorna a URL completa combinando baseUrl + path/endpoint relativo. */
+export function buildUrl(baseUrl: string, endpoint: string): string {
+  const base = baseUrl.replace(/\/$/, '')
+  const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`
+  return `${base}${path}`
 }

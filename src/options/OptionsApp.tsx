@@ -3,19 +3,21 @@ import { getSettings, saveSettings, clearSettings } from '../storage'
 import { SectionLabel, Field, Input, Textarea, Btn, BtnRow } from '../components/ui'
 
 export default function OptionsApp() {
-  const [baseUrl,      setBaseUrl]      = useState('')
-  const [endpoint,     setEndpoint]     = useState('')
-  const [apiKey,       setApiKey]       = useState('')
-  const [extraHeaders, setExtraHeaders] = useState('')
-  const [showKey,      setShowKey]      = useState(false)
-  const [feedback,     setFeedback]     = useState<{ type: 'ok' | 'err'; msg: string } | null>(null)
+  const [baseUrl,              setBaseUrl]              = useState('')
+  const [apiKey,               setApiKey]               = useState('')
+  const [extraHeaders,         setExtraHeaders]         = useState('')
+  const [endpointConciliacao,  setEndpointConciliacao]  = useState('')
+  const [endpointUnits,        setEndpointUnits]        = useState('')
+  const [showKey,              setShowKey]              = useState(false)
+  const [feedback,             setFeedback]             = useState<{ type: 'ok' | 'err'; msg: string } | null>(null)
 
   useEffect(() => {
     getSettings().then(s => {
-      if (s.baseUrl)      setBaseUrl(s.baseUrl)
-      if (s.endpoint)     setEndpoint(s.endpoint)
-      if (s.apiKey)       setApiKey(s.apiKey)
-      if (s.extraHeaders) setExtraHeaders(s.extraHeaders)
+      if (s.baseUrl)             setBaseUrl(s.baseUrl)
+      if (s.apiKey)              setApiKey(s.apiKey)
+      if (s.extraHeaders)        setExtraHeaders(s.extraHeaders)
+      if (s.endpointConciliacao) setEndpointConciliacao(s.endpointConciliacao)
+      if (s.endpointUnits)       setEndpointUnits(s.endpointUnits)
     })
   }, [])
 
@@ -25,18 +27,18 @@ export default function OptionsApp() {
   }
 
   async function handleSave() {
-    if (!endpoint.trim()) { flash('err', 'O campo Endpoint é obrigatório.'); return }
-    try { new URL(endpoint) } catch { flash('err', 'Endpoint inválido. Use https://...'); return }
-    if (baseUrl.trim()) {
-      try { new URL(baseUrl) } catch { flash('err', 'Base URL inválida. Use https://...'); return }
-    }
+    if (!baseUrl.trim()) { flash('err', 'O campo Base URL é obrigatório.'); return }
+    try { new URL(baseUrl) } catch { flash('err', 'Base URL inválida. Use https://...'); return }
     if (!apiKey.trim()) { flash('err', 'O campo API Key é obrigatório.'); return }
+    if (!endpointConciliacao.trim()) { flash('err', 'O endpoint de Conciliação NF-e é obrigatório.'); return }
+    if (!endpointUnits.trim()) { flash('err', 'O endpoint de Unidades de consumo é obrigatório.'); return }
     try {
       await saveSettings({
-        baseUrl:      baseUrl.trim() || undefined,
-        endpoint:     endpoint.trim(),
-        apiKey:       apiKey.trim(),
-        extraHeaders: extraHeaders.trim(),
+        baseUrl:             baseUrl.trim(),
+        apiKey:              apiKey.trim(),
+        extraHeaders:        extraHeaders.trim(),
+        endpointConciliacao: endpointConciliacao.trim(),
+        endpointUnits:       endpointUnits.trim(),
       })
       flash('ok', 'Configurações salvas.')
     } catch (e) {
@@ -47,7 +49,8 @@ export default function OptionsApp() {
   async function handleClear() {
     if (!confirm('Apagar todas as configurações?')) return
     await clearSettings()
-    setBaseUrl(''); setEndpoint(''); setApiKey(''); setExtraHeaders('')
+    setBaseUrl(''); setApiKey(''); setExtraHeaders('')
+    setEndpointConciliacao(''); setEndpointUnits('')
     flash('ok', 'Configurações apagadas.')
   }
 
@@ -72,19 +75,19 @@ export default function OptionsApp() {
           <span style={{ ...mono, fontSize: 11, fontWeight: 500, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--text-2)' }}>Configurações</span>
         </div>
 
-        {/* ── Seção 1: Conciliação NF-e ── */}
+        {/* ── Seção 1: Geral ── */}
         <div style={{ marginBottom: 36 }}>
-          <SectionLabel>Conciliação NF-e</SectionLabel>
+          <SectionLabel>Geral</SectionLabel>
 
           <Field
-            label="Endpoint"
-            hint="URL completa que receberá o POST com os dados da conciliação."
+            label="Base URL"
+            hint={<>URL base do sistema, sem barra final. Ex: <code style={code}>https://meu-sistema.com</code></>}
           >
             <Input
               type="url"
-              value={endpoint}
-              onChange={e => setEndpoint(e.target.value)}
-              placeholder="https://meu-sistema.com/api/nfe/conciliacao"
+              value={baseUrl}
+              onChange={e => setBaseUrl(e.target.value)}
+              placeholder="https://meu-sistema.com"
             />
           </Field>
 
@@ -113,25 +116,45 @@ export default function OptionsApp() {
           </Field>
         </div>
 
-        {/* ── Seção 2: REST API — Unidades de consumo ── */}
+        {/* ── Seção 2: Endpoints ── */}
         <div style={{ marginBottom: 36 }}>
-          <SectionLabel>REST API — Unidades de consumo</SectionLabel>
-
-          <div style={{ ...mono, fontSize: 11, color: 'var(--text-3)', background: '#f4f4f2', borderRadius: 'var(--r)', padding: '10px 12px', marginBottom: 16, lineHeight: 1.6 }}>
-            Usado para carregar a lista de unidades no formulário de conciliação via{' '}
-            <code style={code}>GET /api/measurement-units</code>.<br />
-            Usa a mesma API Key configurada acima.
-          </div>
+          <SectionLabel>Endpoints</SectionLabel>
 
           <Field
-            label="Base URL"
-            hint={<>URL base do sistema, sem barra final. Ex: <code style={code}>https://meu-sistema.com</code><br/>Opcional — sem isso, a coluna de unidade de consumo fica como campo texto livre.</>}
+            label="Conciliação NF-e"
+            hint={<>Caminho relativo para envio da conciliação via <code style={code}>POST</code>. Ex: <code style={code}>/api/nfe/conciliacao</code></>}
           >
             <Input
-              type="url"
-              value={baseUrl}
-              onChange={e => setBaseUrl(e.target.value)}
-              placeholder="https://meu-sistema.com"
+              type="text"
+              value={endpointConciliacao}
+              onChange={e => setEndpointConciliacao(e.target.value)}
+              placeholder="/api/nfe/conciliacao"
+            />
+          </Field>
+
+          <Field
+            label="Unidades de consumo"
+            hint={<>Caminho relativo para carregar as unidades via <code style={code}>GET</code>. Ex: <code style={code}>/api/measurement-units?scope=global&active=true</code></>}
+          >
+            <Input
+              type="text"
+              value={endpointUnits}
+              onChange={e => setEndpointUnits(e.target.value)}
+              placeholder="/api/measurement-units?scope=global&active=true"
+            />
+          </Field>
+
+          <Field
+            label="Verificação de status NF-e"
+            hint={<>Caminho relativo usado para checar o status de cada NF-e na tabela via <code style={code}>GET</code>. O número da NF é anexado como <code style={code}>?numero_nfe=…</code><br/>Fixo: usa o mesmo endpoint de Conciliação NF-e acima.</>}
+          >
+            <Input
+              type="text"
+              value={endpointConciliacao}
+              onChange={e => setEndpointConciliacao(e.target.value)}
+              placeholder="/api/nfe/conciliacao"
+              disabled
+              style={{ opacity: 0.5 }}
             />
           </Field>
         </div>

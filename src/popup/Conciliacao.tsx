@@ -56,12 +56,12 @@ export default function Conciliacao({ settings }: Props) {
   const [valError,       setValError]       = useState('')
   const [showJson,       setShowJson]       = useState(false)
 
-  const hasEndpoint = !!(settings.endpoint && settings.apiKey)
+  const hasEndpoint = !!(settings.baseUrl && settings.endpointConciliacao && settings.apiKey)
 
   useEffect(() => {
     const t = setTimeout(() => {
       extract()
-      if (settings.baseUrl) loadUnits()
+      if (settings.baseUrl && settings.endpointUnits) loadUnits()
     }, 50)
     return () => clearTimeout(t)
   }, [])
@@ -73,7 +73,8 @@ export default function Conciliacao({ settings }: Props) {
     setUnitsError(null)
     try {
       const base = settings.baseUrl!.replace(/\/$/, '')
-      const resp = await fetch(`${base}/api/measurement-units?active=true`, {
+      const path = settings.endpointUnits!.startsWith('/') ? settings.endpointUnits! : `/${settings.endpointUnits}`
+      const resp = await fetch(`${base}${path}`, {
         headers: {
           'x-api-key': settings.apiKey ?? '',
           ...(settings.extraHeaders ? parseExtraHeaders(settings.extraHeaders) : {}),
@@ -186,7 +187,9 @@ export default function Conciliacao({ settings }: Props) {
         items,
         exportado_em: new Date().toISOString(),
       }
-      const resp = await fetch(settings.endpoint!, {
+      const base2 = settings.baseUrl!.replace(/\/$/, '')
+      const path2 = settings.endpointConciliacao!.startsWith('/') ? settings.endpointConciliacao! : `/${settings.endpointConciliacao}`
+      const resp = await fetch(`${base2}${path2}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -207,7 +210,7 @@ export default function Conciliacao({ settings }: Props) {
           // Build absolute URL: if url is relative, prefix with baseUrl
           const url = json.url.startsWith('http')
             ? json.url
-            : `${(settings.baseUrl ?? '').replace(/\/$/, '')}${json.url}`
+            : `${settings.baseUrl!.replace(/\/$/, '')}${json.url}`
           setRedirectUrl(url)
         }
         setStatus('sent')
@@ -337,9 +340,9 @@ export default function Conciliacao({ settings }: Props) {
       )}
 
       {/* Units load error */}
-      {!settings.baseUrl && (
+      {(!settings.baseUrl || !settings.endpointUnits) && (
         <div style={{ ...infoBoxStyle, marginBottom: 10 }}>
-          ℹ Base URL não configurada — selecione unidades manualmente ou configure nas definições.
+          ℹ Base URL ou endpoint de unidades não configurado — selecione unidades manualmente ou configure nas definições.
         </div>
       )}
       {unitsError && (

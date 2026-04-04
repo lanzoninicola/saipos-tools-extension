@@ -13,6 +13,12 @@ function parseExtraHeaders(raw = ''): Record<string, string> {
   return out
 }
 
+function buildUrl(baseUrl: string, endpoint: string): string {
+  const base = new URL(baseUrl).origin
+  const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`
+  return `${base}${path}`
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
   // ── Open popup ────────────────────────────────────────────────────────────
@@ -24,40 +30,33 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
 
   // ── Fetch NF-e status ─────────────────────────────────────────────────────
-  // msg: { action: 'fetchNfeStatus', baseUrl, apiKey, nfeNumber }
+  // msg: { action: 'fetchNfeStatus', baseUrl, endpointConciliacao, apiKey, nfeNumber }
   if (msg.action === 'fetchNfeStatus') {
-    const { baseUrl, apiKey, nfeNumber } = msg
-    const base = (baseUrl as string).replace(/\/$/, '')
-    fetch(
-      `${base}/api/nfe/conciliacao?numero_nfe=${encodeURIComponent(nfeNumber)}`,
-      { headers: { 'x-api-key': apiKey } }
-    )
+    const { baseUrl, endpointConciliacao, apiKey, nfeNumber } = msg
+    const url = buildUrl(baseUrl, endpointConciliacao) + `?numero_nfe=${encodeURIComponent(nfeNumber)}`
+    fetch(url, { headers: { 'x-api-key': apiKey } })
       .then(async resp => {
         if (!resp.ok) {
-          sendResponse({ ok: false, error: `HTTP ${resp.status} — ${resp.statusText || base}` })
+          sendResponse({ ok: false, error: `HTTP ${resp.status} — ${resp.statusText}` })
           return
         }
-        const data = await resp.json()
-        sendResponse({ ok: true, data })
+        sendResponse({ ok: true, data: await resp.json() })
       })
       .catch((e: Error) => sendResponse({ ok: false, error: e.message ?? 'Erro de rede desconhecido' }))
     return true
   }
 
   // ── Fetch measurement units ───────────────────────────────────────────────
-  // msg: { action: 'fetchUnits', baseUrl, apiKey, extraHeaders }
+  // msg: { action: 'fetchUnits', baseUrl, endpointUnits, apiKey, extraHeaders }
   if (msg.action === 'fetchUnits') {
-    const { baseUrl, apiKey, extraHeaders } = msg
-    const base = (baseUrl as string).replace(/\/$/, '')
-    fetch(
-      `${base}/api/measurement-units?active=true`,
-      {
-        headers: {
-          'x-api-key': apiKey,
-          ...(extraHeaders ? parseExtraHeaders(extraHeaders) : {}),
-        },
-      }
-    )
+    const { baseUrl, endpointUnits, apiKey, extraHeaders } = msg
+    const url = buildUrl(baseUrl, endpointUnits)
+    fetch(url, {
+      headers: {
+        'x-api-key': apiKey,
+        ...(extraHeaders ? parseExtraHeaders(extraHeaders) : {}),
+      },
+    })
       .then(async resp => {
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
         const data = await resp.json()
@@ -68,10 +67,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
 
   // ── Send conciliacao payload ──────────────────────────────────────────────
-  // msg: { action: 'sendConciliacao', endpoint, apiKey, extraHeaders, payload }
+  // msg: { action: 'sendConciliacao', baseUrl, endpointConciliacao, apiKey, extraHeaders, payload }
   if (msg.action === 'sendConciliacao') {
-    const { endpoint, apiKey, extraHeaders, payload } = msg
-    fetch(endpoint, {
+    const { baseUrl, endpointConciliacao, apiKey, extraHeaders, payload } = msg
+    const url = buildUrl(baseUrl, endpointConciliacao)
+    fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
