@@ -3,6 +3,7 @@
  * Handles messages from content scripts that require extension-level APIs.
  * Fetches are done here to avoid CORS restrictions in content scripts.
  */
+import { humanizeError } from './errors'
 
 function parseExtraHeaders(raw = ''): Record<string, string> {
   const out: Record<string, string> = {}
@@ -42,7 +43,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         }
         sendResponse({ ok: true, data: await resp.json() })
       })
-      .catch((e: Error) => sendResponse({ ok: false, error: e.message ?? 'Erro de rede desconhecido' }))
+      .catch((e: Error) => sendResponse({ ok: false, error: humanizeError(e) }))
     return true
   }
 
@@ -62,7 +63,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         const data = await resp.json()
         sendResponse({ ok: true, units: data.units ?? [] })
       })
-      .catch((e: Error) => sendResponse({ ok: false, error: e.message }))
+      .catch((e: Error) => sendResponse({ ok: false, error: humanizeError(e) }))
     return true
   }
 
@@ -86,7 +87,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         try { json = JSON.parse(rawText) } catch { /* non-JSON */ }
         sendResponse({ ok: resp.ok, status: resp.status, json, rawText })
       })
-      .catch((e: Error) => sendResponse({ ok: false, error: e.message }))
+      .catch((e: Error) => sendResponse({ ok: false, error: humanizeError(e) }))
     return true
   }
 })

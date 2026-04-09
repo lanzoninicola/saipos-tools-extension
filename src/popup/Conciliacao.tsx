@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react'
 import { extractorConciliacao, type ConciliacaoResult, type ConciliacaoItem } from '../extractors/extractorConciliacao'
 import { Feedback, BtnRow, Btn, Spinner } from '../components/ui'
+import { DecimalInput } from '../components/inputs'
 import { parseExtraHeaders, type Settings } from '../storage'
+import { humanizeError } from '../errors'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -55,6 +57,7 @@ export default function Conciliacao({ settings }: Props) {
   const [showResponse,   setShowResponse]   = useState(false)
   const [valError,       setValError]       = useState('')
   const [showJson,       setShowJson]       = useState(false)
+  const [frete,          setFrete]          = useState(0)
 
   const hasEndpoint = !!(settings.baseUrl && settings.endpointConciliacao && settings.apiKey)
 
@@ -92,7 +95,7 @@ export default function Conciliacao({ settings }: Props) {
         ))
       }
     } catch (e) {
-      setUnitsError('Não foi possível carregar unidades: ' + (e as Error).message)
+      setUnitsError('Não foi possível carregar as unidades de medida. ' + humanizeError(e))
     } finally {
       setUnitsLoading(false)
     }
@@ -132,7 +135,7 @@ export default function Conciliacao({ settings }: Props) {
       setStep(null)
       setStatus('ready')
     } catch (e) {
-      setFeedback({ type: 'err', msg: 'Erro ao acessar a página: ' + (e as Error).message })
+      setFeedback({ type: 'err', msg: 'Não foi possível acessar a página do SAIPOS. ' + humanizeError(e) })
       setStatus('error')
       setStep(null)
     }
@@ -184,6 +187,7 @@ export default function Conciliacao({ settings }: Props) {
       const payload = {
         fornecedor:   extracted!.fornecedor,
         numero_nfe:   extracted!.numero_nfe,
+        valor_frete:  frete,
         items,
         exportado_em: new Date().toISOString(),
       }
@@ -219,13 +223,13 @@ export default function Conciliacao({ settings }: Props) {
         setStatus('ready')
       }
     } catch (e) {
-      setFeedback({ type: 'err', msg: 'Falha: ' + (e as Error).message })
+      setFeedback({ type: 'err', msg: humanizeError(e) })
       setStatus('ready')
     }
   }
 
   const payload = extracted
-    ? { fornecedor: extracted.fornecedor, numero_nfe: extracted.numero_nfe, items, exportado_em: new Date().toISOString() }
+    ? { fornecedor: extracted.fornecedor, numero_nfe: extracted.numero_nfe, valor_frete: frete, items, exportado_em: new Date().toISOString() }
     : null
 
   const sending = status === 'sending'
@@ -351,6 +355,19 @@ export default function Conciliacao({ settings }: Props) {
           <button onClick={loadUnits} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--err)', fontSize: 12, padding: '0 4px' }}>↺</button>
         </div>
       )}
+
+      {/* Frete */}
+      <div style={{ marginBottom: 10 }}>
+        <div style={labelStyle}>Valor de frete</div>
+        <DecimalInput
+          name="frete"
+          defaultValue={frete}
+          onValueChange={setFrete}
+          fractionDigits={2}
+          placeholder="0,00"
+          className="w-full h-8 border rounded px-2 py-1 text-right font-mono text-xs"
+        />
+      </div>
 
       {/* Items table */}
       {items.length > 0 && (

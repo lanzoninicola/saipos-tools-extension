@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { humanizeError } from '../errors'
 import { extractorProviderNfe, type ProviderNfeResult } from '../extractors/extractorProviderNfe'
 import { Feedback, BtnRow, Btn, Notice, Spinner } from '../components/ui'
 
@@ -55,7 +56,7 @@ export default function ProviderNfe() {
         setStatus('done')
       }
     } catch (e) {
-      setErrMsg('Erro ao acessar a página: ' + (e as Error).message)
+      setErrMsg('Não foi possível acessar a página do SAIPOS. ' + humanizeError(e))
       setStatus('error')
     }
   }

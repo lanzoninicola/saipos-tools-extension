@@ -30,19 +30,24 @@ Carregar o `dist/` no Chrome conforme acima.
 
 ```
 src/
-├── storage.js              # chrome.storage.sync (permanente, não apagado com cache)
+├── storage.ts              # chrome.storage.sync (permanente, não apagado com cache)
+├── errors.ts               # utilitário humanizeError
+├── background.ts           # service worker da extensão
 ├── index.css               # design tokens (CSS vars)
-├── components/ui.jsx       # componentes compartilhados
+├── components/
+│   ├── ui.tsx              # componentes compartilhados (Btn, Spinner, Feedback…)
+│   └── inputs.tsx          # inputs especializados: DecimalInput, IntegerInput
 ├── extractors/             # funções injetadas nas abas do SAIPOS
-│   ├── extractorProviderNfe.js
-│   └── extractorConciliacao.js
-├── hooks/useSettings.js    # lê configurações do storage
+│   ├── extractorProviderNfe.ts
+│   └── extractorConciliacao.ts
+├── hooks/useSettings.ts    # lê configurações do storage
+├── content/saiposContent.ts
 ├── popup/                  # UI principal
-│   ├── App.jsx             # menu de seleção de ferramenta
-│   ├── ProviderNfe.jsx
-│   └── Conciliacao.jsx
+│   ├── App.tsx             # menu de seleção de ferramenta
+│   ├── ProviderNfe.tsx
+│   └── Conciliacao.tsx
 └── options/                # página de configurações
-    └── OptionsApp.jsx
+    └── OptionsApp.tsx
 ```
 
 ## Configurações
@@ -67,8 +72,9 @@ Content-Type: application/json
 {
   "fornecedor": "NOME DO FORNECEDOR",
   "numero_nfe": "1234",
+  "valor_frete": 12.50,
   "items": [
-    { "nome": "Pistache", "unidade_entrada": "Quilograma", "quantidade": "0,1080", "valor_total": "29,1600" }
+    { "nome": "Pistache", "unidade_entrada": "Quilograma", "quantidade": "0,1080", "valor_total": "29,1600", "unidade_consumo": "uuid-da-unidade" }
   ],
   "exportado_em": "2026-03-31T14:00:00.000Z"
 }
