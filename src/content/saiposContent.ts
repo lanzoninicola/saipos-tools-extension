@@ -17,11 +17,12 @@ interface NfeStatus {
 }
 
 interface Settings {
-  baseUrl?:              string
-  apiKey?:              string
-  extraHeaders?:        string
-  endpointConciliacao?: string
-  endpointUnits?:       string
+  baseUrl?:                string
+  apiKey?:                string
+  extraHeaders?:           string
+  endpointConciliacao?:    string
+  endpointUnits?:          string
+  showConcEstoqColumn?:    boolean
 }
 
 interface ItemRow {
@@ -66,14 +67,42 @@ let _settingsPromise: Promise<Settings> | null = null
 function getSettings(): Promise<Settings> {
   if (!_settingsPromise) {
     _settingsPromise = new Promise(resolve =>
-      chrome.storage.sync.get(['baseUrl', 'apiKey', 'extraHeaders', 'endpointConciliacao', 'endpointUnits'], data => resolve(data as Settings))
+      chrome.storage.sync.get(['baseUrl', 'apiKey', 'extraHeaders', 'endpointConciliacao', 'endpointUnits', 'showConcEstoqColumn'], data => resolve(data as Settings))
     )
   }
   return _settingsPromise
 }
 
-// Invalidate cache when options are saved
-chrome.storage.onChanged.addListener(() => { _settingsPromise = null })
+// ── SAIPOS native column visibility ──────────────────────────────────────────
+
+const SAIPOS_COL_ATTR    = `${EXT_ATTR}-saipos-col`
+const SAIPOS_HIDE_STYLE_ID = `${EXT_ATTR}-saipos-col-hide`
+
+function setSaiposColumnVisible(visible: boolean) {
+  const existing = document.getElementById(SAIPOS_HIDE_STYLE_ID)
+  if (!visible) {
+    if (!existing) {
+      const style = document.createElement('style')
+      style.id = SAIPOS_HIDE_STYLE_ID
+      style.textContent = `[${SAIPOS_COL_ATTR}] { display: none !important; }`
+      document.head.appendChild(style)
+    }
+  } else {
+    existing?.remove()
+  }
+}
+
+// Invalidate cache when options are saved and re-evaluate column visibility
+chrome.storage.onChanged.addListener(() => {
+  _settingsPromise = null
+  if (document.querySelector('table.table-store-provider-nfe')) {
+    getSettings().then(s => {
+      const visible = s.showConcEstoqColumn !== false
+      setSaiposColumnVisible(visible)
+      if (visible) processTable()
+    })
+  }
+})
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -147,6 +176,7 @@ function injectAmmHeader(table: Element) {
   th.textContent = 'Conc. Estoq. (AMM)'
   const refTh = ths[ths.length - 2]
   if (refTh?.className) th.className = refTh.className
+  if (refTh) refTh.setAttribute(SAIPOS_COL_ATTR, '1')
   th.style.textAlign  = 'center'
   th.style.whiteSpace = 'nowrap'
   headerRow.insertBefore(th, ths[ths.length - 1])
@@ -882,6 +912,9 @@ async function processRow(row: Element) {
   const settings = await getSettings()
   if (!settings.baseUrl || !settings.apiKey || !settings.endpointConciliacao) return
 
+  const saiposColTd = cells[cells.length - 2]
+  if (saiposColTd) saiposColTd.setAttribute(SAIPOS_COL_ATTR, '1')
+
   const td = createAmmCell()
   applyTdStatus(td, 'loading')
   row.insertBefore(td, cells[cells.length - 1])
@@ -951,7 +984,11 @@ function checkPage() {
 
   // Feature 2 — NF list table
   if (document.querySelector('table.table-store-provider-nfe')) {
-    processTable()
+    getSettings().then(s => {
+      const visible = s.showConcEstoqColumn !== false
+      setSaiposColumnVisible(visible)
+      if (visible) processTable()
+    })
   }
 }
 

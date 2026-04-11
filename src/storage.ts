@@ -4,14 +4,15 @@
  */
 
 export interface Settings {
-  baseUrl?:              string  // e.g. https://meu-sistema.com  (sem barra final)
-  apiKey?:              string
-  extraHeaders?:        string
-  endpointConciliacao?: string  // e.g. /api/nfe/conciliacao
-  endpointUnits?:       string  // e.g. /api/measurement-units?scope=global&active=true
+  baseUrl?:                string  // e.g. https://meu-sistema.com  (sem barra final)
+  apiKey?:                string
+  extraHeaders?:           string
+  endpointConciliacao?:    string  // e.g. /api/nfe/conciliacao
+  endpointUnits?:          string  // e.g. /api/measurement-units?scope=global&active=true
+  showConcEstoqColumn?:    boolean // default true — mostra coluna Conc. Estoq. SAIPOS
 }
 
-const KEYS: (keyof Settings)[] = ['baseUrl', 'apiKey', 'extraHeaders', 'endpointConciliacao', 'endpointUnits']
+const KEYS: (keyof Settings)[] = ['baseUrl', 'apiKey', 'extraHeaders', 'endpointConciliacao', 'endpointUnits', 'showConcEstoqColumn']
 
 export function getSettings(): Promise<Settings> {
   return new Promise((resolve) => {

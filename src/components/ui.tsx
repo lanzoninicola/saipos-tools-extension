@@ -260,15 +260,17 @@ interface InputProps {
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void
   placeholder?: string
   style?: React.CSSProperties
+  disabled?: boolean
 }
 
-export function Input({ type = 'text', value, onChange, placeholder, style }: InputProps) {
+export function Input({ type = 'text', value, onChange, placeholder, style, disabled }: InputProps) {
   return (
     <input
       type={type}
       value={value}
       onChange={onChange}
       placeholder={placeholder}
+      disabled={disabled}
       style={{
         width: '100%',
         padding: '10px 12px',
