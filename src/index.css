@@ -25,6 +25,20 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+.decimal-input {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--surface);
+  color: var(--text-1);
+  outline: none;
+  text-align: right;
+}
+.decimal-input:focus { border-color: var(--accent); }
+
 body {
   font-family: var(--sans);
   background: var(--bg);

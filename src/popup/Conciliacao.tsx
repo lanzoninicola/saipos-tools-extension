@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { extractorConciliacao, type ConciliacaoResult, type ConciliacaoItem } from '../extractors/extractorConciliacao'
 import { Feedback, BtnRow, Btn, Spinner } from '../components/ui'
-import { DecimalInput } from '../components/inputs'
 import { parseExtraHeaders, type Settings } from '../storage'
 import { humanizeError } from '../errors'
 
@@ -57,7 +56,7 @@ export default function Conciliacao({ settings }: Props) {
   const [showResponse,   setShowResponse]   = useState(false)
   const [valError,       setValError]       = useState('')
   const [showJson,       setShowJson]       = useState(false)
-  const [frete,          setFrete]          = useState(0)
+  const [freteUnits,     setFreteUnits]     = useState(0) // valor × 100 (ex: R$ 12,34 → 1234)
 
   const hasEndpoint = !!(settings.baseUrl && settings.endpointConciliacao && settings.apiKey)
 
@@ -187,7 +186,7 @@ export default function Conciliacao({ settings }: Props) {
       const payload = {
         fornecedor:   extracted!.fornecedor,
         numero_nfe:   extracted!.numero_nfe,
-        valor_frete:  frete,
+        valor_frete:  freteUnits / 100,
         items,
         exportado_em: new Date().toISOString(),
       }
@@ -229,7 +228,7 @@ export default function Conciliacao({ settings }: Props) {
   }
 
   const payload = extracted
-    ? { fornecedor: extracted.fornecedor, numero_nfe: extracted.numero_nfe, valor_frete: frete, items, exportado_em: new Date().toISOString() }
+    ? { fornecedor: extracted.fornecedor, numero_nfe: extracted.numero_nfe, valor_frete: freteUnits / 100, items, exportado_em: new Date().toISOString() }
     : null
 
   const sending = status === 'sending'
@@ -359,13 +358,38 @@ export default function Conciliacao({ settings }: Props) {
       {/* Frete */}
       <div style={{ marginBottom: 10 }}>
         <div style={labelStyle}>Valor de frete</div>
-        <DecimalInput
-          name="frete"
-          defaultValue={frete}
-          onValueChange={setFrete}
-          fractionDigits={2}
-          placeholder="0,00"
-          className="w-full h-8 border rounded px-2 py-1 text-right font-mono text-xs"
+        <input
+          type="text"
+          inputMode="numeric"
+          value={(freteUnits / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          onChange={() => {}}
+          onKeyDown={e => {
+            const k = e.key
+            if (e.metaKey || e.ctrlKey || k === 'Enter' || k === 'Tab' || k.startsWith('Arrow')) return
+            e.preventDefault()
+            if (/^\d$/.test(k)) {
+              setFreteUnits(u => Math.min(u * 10 + Number(k), 999_999_999_99))
+            } else if (k === 'Backspace') {
+              setFreteUnits(u => Math.floor(u / 10))
+            } else if (k === 'Delete') {
+              setFreteUnits(0)
+            }
+          }}
+          onPaste={e => {
+            e.preventDefault()
+            const raw = e.clipboardData.getData('text').replace(/[^\d,.-]/g, '')
+            const n = parseFloat(raw.replace(',', '.'))
+            if (Number.isFinite(n) && n >= 0) setFreteUnits(Math.round(n * 100))
+          }}
+          style={{
+            width: '100%', padding: '5px 8px',
+            border: '1px solid var(--border)', borderRadius: 'var(--r)',
+            fontFamily: 'var(--mono)', fontSize: 12,
+            background: 'var(--surface)', color: 'var(--text-1)',
+            outline: 'none', textAlign: 'right',
+          }}
+          onFocus={e => e.target.style.borderColor = 'var(--accent)'}
+          onBlur={e => e.target.style.borderColor = 'var(--border)'}
         />
       </div>
 

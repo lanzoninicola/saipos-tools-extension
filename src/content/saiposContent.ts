@@ -29,7 +29,6 @@ interface ItemRow {
   unidade_entrada: string
   quantidade: string
   valor_total: string
-  unidade_consumo: string
 }
 
 interface ConciliacaoData {
@@ -247,7 +246,7 @@ function extractDataFromDOM(): ConciliacaoData | { error: string } {
     const quantidade      = qtdInput?.value.trim() ?? ''
     const valorInput      = cells[3].querySelector('input[ng-model="item.total_value"]') as HTMLInputElement | null
     const valor_total     = valorInput?.value.trim().replace(/^R\$\s*/, '') ?? ''
-    if (nome) items.push({ nome, unidade_entrada, quantidade, valor_total, unidade_consumo: 'UN' })
+    if (nome) items.push({ nome, unidade_entrada, quantidade, valor_total })
   })
 
   return { fornecedor, numero_nfe, items }
@@ -260,6 +259,7 @@ let _items:        ItemRow[]          = []
 let _extracted:    ConciliacaoData | null = null
 let _units:        MeasurementUnit[]  = []
 let _ignoredRows:  Set<number>        = new Set()
+let _freteUnits:   number             = 0  // valor × 100 (ex: R$ 12,34 → 1234)
 
 function closeReviewModal() {
   _overlay?.remove()
@@ -268,6 +268,7 @@ function closeReviewModal() {
   _extracted    = null
   _units        = []
   _ignoredRows  = new Set()
+  _freteUnits   = 0
 }
 
 // ── Modal helpers ─────────────────────────────────────────────────────────────
@@ -320,12 +321,11 @@ function showRedirectLink(url: string) {
 // ── Table builder ─────────────────────────────────────────────────────────────
 
 const COLUMNS: Array<{ key: keyof ItemRow | null; label: string; width: string }> = [
-  { key: 'nome',            label: 'ITEM NF',     width: '43%' },
-  { key: 'unidade_entrada', label: 'UN. NF',      width: '10%' },
-  { key: 'quantidade',      label: 'QTDE',        width: '10%' },
-  { key: 'valor_total',     label: 'VALOR',       width: '12%' },
-  { key: 'unidade_consumo', label: 'UN. CONSUMO', width: '20%' },
-  { key: null,              label: '',             width: '5%'  },
+  { key: 'nome',            label: 'ITEM NF', width: '50%' },
+  { key: 'unidade_entrada', label: 'UN. NF',  width: '13%' },
+  { key: 'quantidade',      label: 'QTDE',    width: '12%' },
+  { key: 'valor_total',     label: 'VALOR',   width: '20%' },
+  { key: null,              label: '',         width: '5%'  },
 ]
 
 function applyIgnoredStyle(tr: HTMLTableRowElement, ignored: boolean) {
@@ -341,7 +341,7 @@ function applyIgnoredStyle(tr: HTMLTableRowElement, ignored: boolean) {
   }
 }
 
-function buildItemRow(item: ItemRow, rowIdx: number, units: MeasurementUnit[]): HTMLTableRowElement {
+function buildItemRow(item: ItemRow, rowIdx: number): HTMLTableRowElement {
   const tr = document.createElement('tr')
   tr.style.cssText = 'border-bottom:1px solid #f3f4f6;transition:opacity 0.15s;'
   tr.addEventListener('mouseenter', () => { if (!_ignoredRows.has(rowIdx)) tr.style.background = '#f9fafb' })
@@ -364,23 +364,6 @@ function buildItemRow(item: ItemRow, rowIdx: number, units: MeasurementUnit[]): 
       input.setAttribute(`${EXT_ATTR}-row`,   String(rowIdx))
       input.setAttribute(`${EXT_ATTR}-field`, col.key)
       td.appendChild(input)
-    } else if (col.key === 'unidade_consumo') {
-      const sel = document.createElement('select')
-      sel.setAttribute(`${EXT_ATTR}-row`,   String(rowIdx))
-      sel.setAttribute(`${EXT_ATTR}-field`, 'unidade_consumo')
-      sel.style.cssText = `width:100%;padding:4px 5px;border:1px solid #e5e7eb;border-radius:4px;font-family:${MONO};font-size:12px;background:#fff;color:#374151;outline:none;cursor:pointer;`
-      const opts = units.length > 0 ? units : [{ id: 'UN', code: 'UN', name: 'Unidade' }]
-      opts.forEach(u => {
-        const opt = document.createElement('option')
-        opt.value = u.id
-        opt.textContent = u.name ? `${u.code} (${u.name})` : u.code
-        if (item.unidade_consumo === u.id || item.unidade_consumo === u.code) opt.selected = true
-        sel.appendChild(opt)
-      })
-      sel.addEventListener('change', () => { _items[rowIdx].unidade_consumo = sel.value })
-      sel.addEventListener('focus', () => { sel.style.borderColor = '#93c5fd' })
-      sel.addEventListener('blur',  () => { sel.style.borderColor = '#e5e7eb' })
-      td.appendChild(sel)
     } else if (col.key === null) {
       // Ignore toggle button
       td.style.cssText += 'text-align:center;'
@@ -550,6 +533,7 @@ async function handleSend(settings: Settings) {
   const payload = {
     fornecedor:   _extracted!.fornecedor,
     numero_nfe:   _extracted!.numero_nfe,
+    valor_frete:  _freteUnits / 100,
     items:        _items.filter((_, i) => !_ignoredRows.has(i)),
     exportado_em: new Date().toISOString(),
   }
@@ -646,6 +630,51 @@ async function showReviewModal(data: ConciliacaoData) {
     unitsStatus.style.cssText = `display:none;font-size:11px;font-family:${MONO};color:#6b7280;margin-bottom:8px;`
     body.appendChild(unitsStatus)
   }
+
+  // Frete input
+  _freteUnits = 0
+  const freteWrap = document.createElement('div')
+  freteWrap.style.cssText = 'margin-bottom:14px;'
+
+  const freteLabel = document.createElement('div')
+  freteLabel.style.cssText = `font-family:${MONO};font-size:9px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:#9ca3af;margin-bottom:4px;`
+  freteLabel.textContent = 'Valor de frete'
+
+  const freteInput = document.createElement('input')
+  freteInput.type = 'text'
+  freteInput.inputMode = 'numeric'
+  freteInput.value = (0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  freteInput.style.cssText = `width:160px;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;font-family:${MONO};font-size:12px;background:#fff;color:#111827;outline:none;text-align:right;`
+  freteInput.addEventListener('focus', () => { freteInput.style.borderColor = '#93c5fd' })
+  freteInput.addEventListener('blur',  () => { freteInput.style.borderColor = '#e5e7eb' })
+  freteInput.addEventListener('keydown', (e: KeyboardEvent) => {
+    const k = e.key
+    if (e.metaKey || e.ctrlKey || k === 'Enter' || k === 'Tab' || k.startsWith('Arrow')) return
+    e.preventDefault()
+    if (/^\d$/.test(k)) {
+      _freteUnits = Math.min(_freteUnits * 10 + Number(k), 999_999_999_99)
+    } else if (k === 'Backspace') {
+      _freteUnits = Math.floor(_freteUnits / 10)
+    } else if (k === 'Delete') {
+      _freteUnits = 0
+    } else {
+      return
+    }
+    freteInput.value = (_freteUnits / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  })
+  freteInput.addEventListener('paste', (e: ClipboardEvent) => {
+    e.preventDefault()
+    const raw = (e.clipboardData?.getData('text') ?? '').replace(/[^\d,.-]/g, '')
+    const n = parseFloat(raw.replace(',', '.'))
+    if (Number.isFinite(n) && n >= 0) {
+      _freteUnits = Math.round(n * 100)
+      freteInput.value = (_freteUnits / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    }
+  })
+
+  freteWrap.appendChild(freteLabel)
+  freteWrap.appendChild(freteInput)
+  body.appendChild(freteWrap)
 
   // Items table
   body.appendChild(buildTable(_items, []))

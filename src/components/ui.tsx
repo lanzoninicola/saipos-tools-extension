@@ -123,7 +123,11 @@ export function Btn({ onClick, disabled, variant = 'primary', href, target, chil
   const combined = { ...base, ...variants[variant] }
 
   if (href) {
-    return <a href={href} target={target} style={combined}>{children}</a>
+    const handleHref = (e: React.MouseEvent) => {
+      e.preventDefault()
+      chrome.tabs.create({ url: href })
+    }
+    return <a href={href} onClick={handleHref} style={combined}>{children}</a>
   }
 
   return (
