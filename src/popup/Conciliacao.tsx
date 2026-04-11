@@ -210,11 +210,9 @@ export default function Conciliacao({ settings }: Props) {
       if (resp.ok && json?.success) {
         setFeedback({ type: 'ok', msg: json.message ?? 'Enviado com sucesso.' })
         if (json.url) {
-          // Build absolute URL: if url is relative, prefix with baseUrl
-          const url = json.url.startsWith('http')
-            ? json.url
-            : `${settings.baseUrl!.replace(/\/$/, '')}${json.url}`
-          setRedirectUrl(url)
+          try {
+            setRedirectUrl(new URL(json.url, settings.baseUrl ?? '').href)
+          } catch { /* invalid URL, skip */ }
         }
         setStatus('sent')
       } else {

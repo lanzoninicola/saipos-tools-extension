@@ -54,8 +54,8 @@ const AMM_ATTR = `${EXT_ATTR}-amm`
 
 const AMM_CFG: Record<string, { text: string; color: string; title: string; pointer: boolean }> = {
   not_found: { text: 'Não',        color: '#dc2626', title: 'Sem conciliação de estoque no AMM',   pointer: false },
-  partial:   { text: 'Parcial',    color: '#d97706', title: 'Conciliação parcial',                  pointer: false },
-  complete:  { text: 'Sim',        color: '#16a34a', title: 'Conciliação de estoque completa',      pointer: false },
+  partial:   { text: 'Parcial',    color: '#d97706', title: 'Conciliação parcial — clique para detalhes', pointer: true  },
+  complete:  { text: 'Sim',        color: '#16a34a', title: 'Conciliação de estoque completa',      pointer: true  },
   loading:   { text: 'Carregando', color: '#6b7280', title: 'Verificando…',                         pointer: false },
   error:     { text: 'Erro',       color: '#dc2626', title: 'Erro — clique para detalhes',          pointer: true  },
 }
@@ -580,10 +580,10 @@ async function handleSend(settings: Settings) {
       if (resp.ok && resp.json?.success) {
         setFeedback('✓ ' + (resp.json.message ?? 'Enviado com sucesso.'), 'ok')
         if (resp.json.url) {
-          const url = resp.json.url.startsWith('http')
-            ? resp.json.url
-            : `${(settings.baseUrl ?? '').replace(/\/$/, '')}${resp.json.url}`
-          showRedirectLink(url)
+          try {
+            const url = new URL(resp.json.url, settings.baseUrl ?? '').href
+            showRedirectLink(url)
+          } catch { /* invalid URL, skip */ }
         }
       } else {
         setFeedback('Erro: ' + (resp.json?.message ?? `HTTP ${resp.status}`), 'err')
@@ -925,11 +925,13 @@ async function processRow(row: Element) {
   let lastError     = ''
   let fetchedAt     = ''
   let currentStatus = 'loading'
+  let lastData:   NfeStatus | null = null
 
   async function doFetch() {
     if (fetching) return
     fetching      = true
     lastError     = ''
+    lastData      = null
     currentStatus = 'loading'
     closePartialPopup()
     applyTdStatus(td, 'loading')
@@ -947,8 +949,10 @@ async function processRow(row: Element) {
       return
     }
 
+    lastData      = result
     currentStatus = result.status
     applyTdStatus(td, result.status)
+    if (result.status === 'complete' && !result.url) td.style.cursor = 'default'
   }
 
   td.addEventListener('click', (e: MouseEvent) => {
@@ -956,6 +960,10 @@ async function processRow(row: Element) {
     e.preventDefault()
     if (currentStatus === 'error' && lastError) {
       showErrorPopup(td, lastError, fetchedAt, settings, nfeNumber, doFetch)
+    } else if (currentStatus === 'partial' && lastData) {
+      showPartialPopup(td, lastData)
+    } else if (currentStatus === 'complete' && lastData?.url) {
+      window.open(lastData.url, '_blank', 'noopener')
     }
   }, true)
 
