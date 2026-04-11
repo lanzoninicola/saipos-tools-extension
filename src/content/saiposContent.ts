@@ -119,6 +119,7 @@ async function fetchStatus(nfeNumber: string): Promise<FetchResult> {
 
 function createAmmCell(): HTMLTableCellElement {
   const td = document.createElement('td')
+  td.setAttribute(EXT_ATTR, 'amm-cell')
   td.setAttribute(AMM_ATTR, '1')
   td.style.cssText = 'text-align:center;vertical-align:middle;white-space:nowrap;font-weight:600;'
   return td
@@ -141,6 +142,7 @@ function injectAmmHeader(table: Element) {
   if (ths.length === 0) return
 
   const th = document.createElement('th')
+  th.setAttribute(EXT_ATTR, 'amm-header')
   th.setAttribute(AMM_ATTR, '1')
   th.textContent = 'Conc. Estoq. (AMM)'
   const refTh = ths[ths.length - 2]
