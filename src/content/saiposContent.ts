@@ -49,12 +49,14 @@ const EXT_ATTR = 'data-sxt'
 const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
 const MONO = "ui-monospace,SFMono-Regular,'SF Mono',Consolas,monospace"
 
-const STATUS_CFG: Record<string, { color: string; label: string; title: string; pointer: boolean }> = {
-  not_found: { color: '#dc2626', label: '✕', title: 'Sem conciliação de estoque',                              pointer: false },
-  partial:   { color: '#d97706', label: '!', title: 'Conciliação parcial — clique p/ detalhes',                pointer: true  },
-  complete:  { color: '#16a34a', label: '✓', title: 'Conciliação de estoque completa',                         pointer: false },
-  loading:   { color: '#9ca3af', label: '…', title: 'Verificando…',                                            pointer: false },
-  error:     { color: '#dc2626', label: '!', title: 'Erro ao verificar status — clique para detalhes',         pointer: true  },
+const AMM_ATTR = `${EXT_ATTR}-amm`
+
+const AMM_CFG: Record<string, { text: string; color: string; title: string; pointer: boolean }> = {
+  not_found: { text: 'Não',        color: '#dc2626', title: 'Sem conciliação de estoque no AMM',   pointer: false },
+  partial:   { text: 'Parcial',    color: '#d97706', title: 'Conciliação parcial',                  pointer: false },
+  complete:  { text: 'Sim',        color: '#16a34a', title: 'Conciliação de estoque completa',      pointer: false },
+  loading:   { text: 'Carregando', color: '#6b7280', title: 'Verificando…',                         pointer: false },
+  error:     { text: 'Erro',       color: '#dc2626', title: 'Erro — clique para detalhes',          pointer: true  },
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────────
@@ -113,44 +115,39 @@ async function fetchStatus(nfeNumber: string): Promise<FetchResult> {
   })
 }
 
-// ── Badge ─────────────────────────────────────────────────────────────────────
+// ── AMM column cell ───────────────────────────────────────────────────────────
 
-;(function ensureSpinStyle() {
-  const id = 'sxt-spin-style'
-  if (!document.getElementById(id)) {
-    const s = document.createElement('style')
-    s.id = id
-    s.textContent = `@keyframes sxt-spin { to { transform: rotate(360deg); } } .sxt-spin { display:inline-block; animation: sxt-spin 0.8s linear infinite; }`
-    document.head.appendChild(s)
-  }
-})()
-
-function applyBadgeStatus(badge: HTMLElement, key: string) {
-  const cfg = STATUS_CFG[key] ?? STATUS_CFG.error
-  badge.style.background = cfg.color
-  badge.title            = cfg.title
-  badge.style.cursor     = cfg.pointer ? 'pointer' : 'default'
-  if (key === 'loading') {
-    badge.innerHTML = '<span class="sxt-spin" style="line-height:1;font-size:12px;">↻</span>'
-  } else {
-    badge.textContent = cfg.label
-  }
+function createAmmCell(): HTMLTableCellElement {
+  const td = document.createElement('td')
+  td.setAttribute(AMM_ATTR, '1')
+  td.style.cssText = 'text-align:center;vertical-align:middle;white-space:nowrap;font-weight:600;'
+  return td
 }
 
-function createBadge(nfeNumber: string): HTMLElement {
-  const badge = document.createElement('button')
-  badge.setAttribute(EXT_ATTR, 'badge')
-  badge.setAttribute(`${EXT_ATTR}-nfe`, nfeNumber)
-  badge.type = 'button'
-  badge.style.cssText = [
-    'display:inline-flex', 'align-items:center', 'justify-content:center',
-    'width:20px', 'height:20px', 'border-radius:50%', 'border:none',
-    'font-size:10px', 'font-weight:700', 'color:white',
-    'margin-right:4px', 'flex-shrink:0', 'vertical-align:middle',
-    'transition:opacity 0.15s',
-  ].join(';')
-  applyBadgeStatus(badge, 'loading')
-  return badge
+function applyTdStatus(td: HTMLTableCellElement, key: string) {
+  const cfg = AMM_CFG[key] ?? AMM_CFG.error
+  td.textContent  = cfg.text
+  td.style.color  = cfg.color
+  td.style.cursor = cfg.pointer ? 'pointer' : 'default'
+  td.title        = cfg.title
+}
+
+function injectAmmHeader(table: Element) {
+  const headerRow = table.querySelector('thead tr')
+  if (!headerRow) return
+  if (headerRow.querySelector(`[${AMM_ATTR}]`)) return
+
+  const ths = headerRow.querySelectorAll('th')
+  if (ths.length === 0) return
+
+  const th = document.createElement('th')
+  th.setAttribute(AMM_ATTR, '1')
+  th.textContent = 'Conc. Estoq. (AMM)'
+  const refTh = ths[ths.length - 2]
+  if (refTh?.className) th.className = refTh.className
+  th.style.textAlign  = 'center'
+  th.style.whiteSpace = 'nowrap'
+  headerRow.insertBefore(th, ths[ths.length - 1])
 }
 
 // ── Partial popup ─────────────────────────────────────────────────────────────
@@ -870,14 +867,12 @@ function showErrorPopup(
   }, 0)
 }
 
-// ── Feature 2: Status badges in NF list table ─────────────────────────────────
+// ── Feature 2: AMM column in NF list table ───────────────────────────────────
 
 async function processRow(row: Element) {
   const cells = row.querySelectorAll('td')
   if (cells.length < 9) return
-
-  const actionCell = cells[cells.length - 1] as HTMLElement
-  if (actionCell.querySelector(`[${EXT_ATTR}="badge"]`)) return
+  if (row.querySelector(`[${AMM_ATTR}]`)) return
 
   const nfeNumber = cells[0].textContent?.trim()
   if (!nfeNumber) return
@@ -885,19 +880,22 @@ async function processRow(row: Element) {
   const settings = await getSettings()
   if (!settings.baseUrl || !settings.apiKey || !settings.endpointConciliacao) return
 
-  const badge = createBadge(nfeNumber)
+  const td = createAmmCell()
+  applyTdStatus(td, 'loading')
+  row.insertBefore(td, cells[cells.length - 1])
 
-  actionCell.insertBefore(badge, actionCell.firstChild)
-
-  let fetching   = false
-  let lastError  = ''
-  let fetchedAt  = ''
+  let fetching      = false
+  let lastError     = ''
+  let fetchedAt     = ''
+  let currentStatus = 'loading'
 
   async function doFetch() {
     if (fetching) return
-    fetching = true
+    fetching      = true
+    lastError     = ''
+    currentStatus = 'loading'
     closePartialPopup()
-    applyBadgeStatus(badge, 'loading')
+    applyTdStatus(td, 'loading')
     statusCache.delete(nfeNumber)
     fetchedAt = new Date().toISOString()
 
@@ -905,41 +903,33 @@ async function processRow(row: Element) {
     fetching = false
 
     if (result.status === 'error') {
-      lastError = result.error
-      applyBadgeStatus(badge, 'error')
-      badge.title = result.error + ' — clique para detalhes'
+      lastError     = result.error
+      currentStatus = 'error'
+      applyTdStatus(td, 'error')
+      td.title = result.error + ' — clique para detalhes'
       return
     }
 
-    // Success — swap badge for a clean clone without error listeners
-    const fresh = badge.cloneNode(true) as HTMLElement
-    badge.replaceWith(fresh)
-    applyBadgeStatus(fresh, result.status)
-    if (result.status === 'partial') {
-      fresh.addEventListener('click', (e) => {
-        e.stopPropagation()
-        e.preventDefault()
-        showPartialPopup(fresh, result)
-      }, true)
-    }
+    currentStatus = result.status
+    applyTdStatus(td, result.status)
   }
 
-  badge.addEventListener('click', async (e) => {
+  td.addEventListener('click', (e: MouseEvent) => {
     e.stopPropagation()
     e.preventDefault()
-    if (lastError) {
-      showErrorPopup(badge, lastError, fetchedAt, settings, nfeNumber, doFetch)
-    } else {
-      await doFetch()
+    if (currentStatus === 'error' && lastError) {
+      showErrorPopup(td, lastError, fetchedAt, settings, nfeNumber, doFetch)
     }
-  }, true /* capture: intercepts before SAIPOS row handlers */)
+  }, true)
+
   await doFetch()
 }
 
 function processTable() {
-  document.querySelectorAll(
-    'table.table-store-provider-nfe tbody tr[data-qa="provider-nfes-value"]'
-  ).forEach(row => processRow(row))
+  const table = document.querySelector('table.table-store-provider-nfe')
+  if (!table) return
+  injectAmmHeader(table)
+  table.querySelectorAll('tbody tr[data-qa="provider-nfes-value"]').forEach(row => processRow(row))
 }
 
 // ── Page observer ─────────────────────────────────────────────────────────────
