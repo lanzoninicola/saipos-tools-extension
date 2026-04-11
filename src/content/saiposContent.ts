@@ -176,10 +176,12 @@ function injectAmmHeader(table: Element) {
   th.textContent = 'Conc. Estoq. (AMM)'
   const refTh = ths[ths.length - 2]
   if (refTh?.className) th.className = refTh.className
-  if (refTh) refTh.setAttribute(SAIPOS_COL_ATTR, '1')
   th.style.textAlign  = 'center'
   th.style.whiteSpace = 'nowrap'
   headerRow.insertBefore(th, ths[ths.length - 1])
+  // tag the column immediately before the AMM header (previousElementSibling after insertion)
+  const prevTh = th.previousElementSibling
+  if (prevTh) prevTh.setAttribute(SAIPOS_COL_ATTR, '1')
 }
 
 // ── Partial popup ─────────────────────────────────────────────────────────────
@@ -912,12 +914,12 @@ async function processRow(row: Element) {
   const settings = await getSettings()
   if (!settings.baseUrl || !settings.apiKey || !settings.endpointConciliacao) return
 
-  const saiposColTd = cells[cells.length - 2]
-  if (saiposColTd) saiposColTd.setAttribute(SAIPOS_COL_ATTR, '1')
-
   const td = createAmmCell()
   applyTdStatus(td, 'loading')
   row.insertBefore(td, cells[cells.length - 1])
+  // tag the cell immediately before the AMM cell (previousElementSibling after insertion)
+  const prevTd = td.previousElementSibling
+  if (prevTd) prevTd.setAttribute(SAIPOS_COL_ATTR, '1')
 
   let fetching      = false
   let lastError     = ''
