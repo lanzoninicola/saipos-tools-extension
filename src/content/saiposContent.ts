@@ -21,7 +21,6 @@ interface Settings {
   apiKey?:                string
   extraHeaders?:           string
   endpointConciliacao?:    string
-  endpointUnits?:          string
   showConcEstoqColumn?:    boolean
 }
 
@@ -36,12 +35,6 @@ interface ConciliacaoData {
   fornecedor: string
   numero_nfe: string
   items: ItemRow[]
-}
-
-interface MeasurementUnit {
-  id: string
-  code: string
-  name: string
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -67,7 +60,7 @@ let _settingsPromise: Promise<Settings> | null = null
 function getSettings(): Promise<Settings> {
   if (!_settingsPromise) {
     _settingsPromise = new Promise(resolve =>
-      chrome.storage.sync.get(['baseUrl', 'apiKey', 'extraHeaders', 'endpointConciliacao', 'endpointUnits', 'showConcEstoqColumn'], data => resolve(data as Settings))
+      chrome.storage.sync.get(['baseUrl', 'apiKey', 'extraHeaders', 'endpointConciliacao', 'showConcEstoqColumn'], data => resolve(data as Settings))
     )
   }
   return _settingsPromise
@@ -288,7 +281,6 @@ function extractDataFromDOM(): ConciliacaoData | { error: string } {
 let _overlay:      HTMLElement | null = null
 let _items:        ItemRow[]          = []
 let _extracted:    ConciliacaoData | null = null
-let _units:        MeasurementUnit[]  = []
 let _ignoredRows:  Set<number>        = new Set()
 let _freteUnits:   number             = 0  // valor × 100 (ex: R$ 12,34 → 1234)
 
@@ -297,7 +289,6 @@ function closeReviewModal() {
   _overlay      = null
   _items        = []
   _extracted    = null
-  _units        = []
   _ignoredRows  = new Set()
   _freteUnits   = 0
 }
@@ -329,7 +320,7 @@ function setSendBtnLoading(loading: boolean) {
   const btn = getModalEl('send-btn') as HTMLButtonElement | null
   if (!btn) return
   btn.disabled = loading
-  btn.textContent = loading ? 'Enviando…' : 'Enviar'
+  btn.textContent = loading ? 'ENVIANDO…' : 'ENVIAR'
   btn.style.opacity = loading ? '0.7' : '1'
   btn.style.cursor  = loading ? 'not-allowed' : 'pointer'
 }
@@ -441,7 +432,7 @@ function buildItemRow(item: ItemRow, rowIdx: number): HTMLTableRowElement {
   return tr
 }
 
-function buildTable(items: ItemRow[], units: MeasurementUnit[]): HTMLElement {
+function buildTable(items: ItemRow[]): HTMLElement {
   const wrapper = document.createElement('div')
   wrapper.style.cssText = 'margin-bottom:14px;overflow-y:auto;max-height:340px;'
 
@@ -470,61 +461,11 @@ function buildTable(items: ItemRow[], units: MeasurementUnit[]): HTMLElement {
 
   const tbody = document.createElement('tbody')
   tbody.setAttribute(EXT_ATTR, 'items-tbody')
-  items.forEach((item, i) => tbody.appendChild(buildItemRow(item, i, units)))
+  items.forEach((item, i) => tbody.appendChild(buildItemRow(item, i)))
   table.appendChild(tbody)
   wrapper.appendChild(table)
 
   return wrapper
-}
-
-function updateSelectsWithUnits(units: MeasurementUnit[]) {
-  if (!_overlay) return
-  _overlay.querySelectorAll(`select[${EXT_ATTR}-field="unidade_consumo"]`).forEach(el => {
-    const sel      = el as HTMLSelectElement
-    const rowIdx   = parseInt(sel.getAttribute(`${EXT_ATTR}-row`) ?? '0', 10)
-    const current  = _items[rowIdx]?.unidade_consumo ?? 'UN'
-
-    sel.innerHTML = ''
-    units.forEach(u => {
-      const opt = document.createElement('option')
-      opt.value = u.id
-      opt.textContent = u.name ? `${u.code} (${u.name})` : u.code
-      if (current === u.id || current === u.code) opt.selected = true
-      sel.appendChild(opt)
-    })
-
-    // If the default 'UN' string is set, resolve it to the real unit ID
-    if (current === 'UN') {
-      const unUnit = units.find(u => u.code === 'UN')
-      if (unUnit) {
-        _items[rowIdx].unidade_consumo = unUnit.id
-        sel.value = unUnit.id
-      }
-    }
-  })
-}
-
-async function loadUnitsInModal(settings: Settings) {
-  const statusEl = getModalEl('units-status')
-  if (statusEl) { statusEl.textContent = '⟳ Carregando unidades de consumo…'; statusEl.style.display = 'block' }
-
-  chrome.runtime.sendMessage(
-    { action: 'fetchUnits', baseUrl: settings.baseUrl, endpointUnits: settings.endpointUnits, apiKey: settings.apiKey, extraHeaders: settings.extraHeaders },
-    (resp: { ok: boolean; units?: MeasurementUnit[]; error?: string }) => {
-      if (!_overlay) return  // modal was closed while loading
-      if (chrome.runtime.lastError || !resp.ok) {
-        if (statusEl) {
-          statusEl.textContent = '⚠ Não foi possível carregar unidades: ' + (resp?.error ?? chrome.runtime.lastError?.message ?? 'Erro desconhecido')
-          statusEl.style.display = 'block'
-          statusEl.style.color = '#b45309'
-        }
-        return
-      }
-      _units = resp.units ?? []
-      updateSelectsWithUnits(_units)
-      if (statusEl) statusEl.style.display = 'none'
-    }
-  )
 }
 
 // ── Validate ──────────────────────────────────────────────────────────────────
@@ -654,14 +595,6 @@ async function showReviewModal(data: ConciliacaoData) {
     body.appendChild(warn)
   }
 
-  // Units loading status (hidden until visible)
-  if (settings.baseUrl) {
-    const unitsStatus = document.createElement('div')
-    unitsStatus.setAttribute(EXT_ATTR, 'units-status')
-    unitsStatus.style.cssText = `display:none;font-size:11px;font-family:${MONO};color:#6b7280;margin-bottom:8px;`
-    body.appendChild(unitsStatus)
-  }
-
   // Frete input
   _freteUnits = 0
   const freteWrap = document.createElement('div')
@@ -708,7 +641,7 @@ async function showReviewModal(data: ConciliacaoData) {
   body.appendChild(freteWrap)
 
   // Items table
-  body.appendChild(buildTable(_items, []))
+  body.appendChild(buildTable(_items))
 
   // ── Footer
   const footer = document.createElement('div')
@@ -723,8 +656,8 @@ async function showReviewModal(data: ConciliacaoData) {
   const cancelBtn = document.createElement('button')
   cancelBtn.type = 'button'
   cancelBtn.setAttribute(EXT_ATTR, 'cancel-btn')
-  cancelBtn.textContent = 'Fechar'
-  cancelBtn.style.cssText = `background:#f3f4f6;color:#374151;border:1px solid #e5e7eb;border-radius:6px;padding:8px 16px;font-size:13px;font-weight:500;cursor:pointer;font-family:${FONT};`
+  cancelBtn.textContent = 'FECHAR'
+  cancelBtn.style.cssText = `background:#f3f4f6;color:#374151;border:1px solid #e5e7eb;border-radius:6px;padding:8px 16px;font-size:12px;font-weight:600;letter-spacing:0.5px;cursor:pointer;font-family:${FONT};`
   cancelBtn.addEventListener('mouseenter', () => { cancelBtn.style.background = '#e5e7eb' })
   cancelBtn.addEventListener('mouseleave', () => { cancelBtn.style.background = '#f3f4f6' })
   cancelBtn.addEventListener('click', closeReviewModal)
@@ -733,9 +666,9 @@ async function showReviewModal(data: ConciliacaoData) {
   const sendBtn = document.createElement('button')
   sendBtn.type = 'button'
   sendBtn.setAttribute(EXT_ATTR, 'send-btn')
-  sendBtn.textContent = 'Enviar'
+  sendBtn.textContent = 'ENVIAR'
   sendBtn.disabled    = !hasConfig
-  sendBtn.style.cssText = `background:#2563eb;color:white;border:none;border-radius:6px;padding:8px 20px;font-size:13px;font-weight:500;font-family:${FONT};cursor:${hasConfig ? 'pointer' : 'not-allowed'};opacity:${hasConfig ? '1' : '0.5'};transition:background 0.15s;`
+  sendBtn.style.cssText = `background:#2563eb;color:white;border:none;border-radius:6px;padding:8px 20px;font-size:12px;font-weight:600;letter-spacing:0.5px;font-family:${FONT};cursor:${hasConfig ? 'pointer' : 'not-allowed'};opacity:${hasConfig ? '1' : '0.5'};transition:background 0.15s;`
   sendBtn.addEventListener('mouseenter', () => { if (!sendBtn.disabled) sendBtn.style.background = '#1d4ed8' })
   sendBtn.addEventListener('mouseleave', () => { if (!sendBtn.disabled) sendBtn.style.background = '#2563eb' })
   sendBtn.addEventListener('click', () => handleSend(settings))
@@ -751,11 +684,201 @@ async function showReviewModal(data: ConciliacaoData) {
   // Dismiss on Escape
   const escHandler = (e: KeyboardEvent) => { if (e.key === 'Escape') { closeReviewModal(); document.removeEventListener('keydown', escHandler) } }
   document.addEventListener('keydown', escHandler)
+}
 
-  // Load units asynchronously (don't block modal render)
-  if (settings.baseUrl && settings.apiKey && settings.endpointUnits) {
-    loadUnitsInModal(settings)
+// ── Inline confirmation node ──────────────────────────────────────────────────
+
+function removeInlineConfirm(modal: Element) {
+  modal.querySelector(`[${EXT_ATTR}="inline-confirm"]`)?.remove()
+}
+
+function showInlineConfirm(modal: Element, data: ConciliacaoData, settings: Settings) {
+  removeInlineConfirm(modal)
+
+  const hasConfig = !!(settings.baseUrl && settings.apiKey && settings.endpointConciliacao)
+
+  // frete state (centavos)
+  let freteUnits = 0
+
+  const wrap = document.createElement('div')
+  wrap.setAttribute(EXT_ATTR, 'inline-confirm')
+  wrap.style.cssText = [
+    `font-family:${FONT}`,
+    'padding:10px 16px',
+    'background:#f0fdf4',
+    'border-bottom:1px solid #bbf7d0',
+    'display:flex',
+    'align-items:center',
+    'justify-content:space-between',
+    'flex-wrap:wrap',
+    'gap:8px',
+  ].join(';')
+
+  // Left: checks + item count + frete
+  const left = document.createElement('div')
+  left.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;'
+
+  const mkCheck = (label: string, value: string) => {
+    const span = document.createElement('span')
+    span.style.cssText = 'font-size:12px;color:#166534;display:flex;align-items:center;gap:4px;'
+    span.innerHTML = `<span style="color:#16a34a;font-weight:700;">✓</span> <span style="color:#374151">${label}:</span> <strong style="color:#111827">${value || '—'}</strong>`
+    return span
   }
+
+  const mkInfo = (label: string, value: string) => {
+    const span = document.createElement('span')
+    span.style.cssText = 'font-size:12px;color:#374151;display:flex;align-items:center;gap:4px;'
+    span.innerHTML = `<span style="color:#6b7280">${label}:</span> <strong style="color:#111827">${value}</strong>`
+    return span
+  }
+
+  left.appendChild(mkCheck('Fornecedor', data.fornecedor))
+  left.appendChild(mkCheck('Nº nota', data.numero_nfe))
+  left.appendChild(mkInfo('Itens', String(data.items.length)))
+
+  // Frete inline input
+  const freteWrap = document.createElement('span')
+  freteWrap.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:12px;color:#374151;'
+  freteWrap.innerHTML = `<span style="color:#6b7280">Frete:</span>`
+  const freteInput = document.createElement('input')
+  freteInput.type      = 'text'
+  freteInput.inputMode = 'numeric'
+  freteInput.value     = (0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  freteInput.style.cssText = `width:80px;padding:2px 5px;border:1px solid #d1fae5;border-radius:4px;font-family:${MONO};font-size:12px;background:#fff;color:#111827;outline:none;text-align:right;`
+  freteInput.addEventListener('focus', () => { freteInput.style.borderColor = '#6ee7b7' })
+  freteInput.addEventListener('blur',  () => { freteInput.style.borderColor = '#d1fae5' })
+  freteInput.addEventListener('keydown', (e: KeyboardEvent) => {
+    const k = e.key
+    if (e.metaKey || e.ctrlKey || k === 'Enter' || k === 'Tab' || k.startsWith('Arrow')) return
+    e.preventDefault()
+    if (/^\d$/.test(k)) {
+      freteUnits = Math.min(freteUnits * 10 + Number(k), 999_999_999_99)
+    } else if (k === 'Backspace') {
+      freteUnits = Math.floor(freteUnits / 10)
+    } else if (k === 'Delete') {
+      freteUnits = 0
+    } else { return }
+    freteInput.value = (freteUnits / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  })
+  freteInput.addEventListener('paste', (e: ClipboardEvent) => {
+    e.preventDefault()
+    const raw = (e.clipboardData?.getData('text') ?? '').replace(/[^\d,.-]/g, '')
+    const n = parseFloat(raw.replace(',', '.'))
+    if (Number.isFinite(n) && n >= 0) {
+      freteUnits = Math.round(n * 100)
+      freteInput.value = (freteUnits / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    }
+  })
+  freteWrap.appendChild(freteInput)
+  left.appendChild(freteWrap)
+
+  wrap.appendChild(left)
+
+  // Right: feedback + buttons
+  const actions = document.createElement('div')
+  actions.style.cssText = 'display:flex;align-items:center;gap:8px;flex-shrink:0;'
+
+  const feedback = document.createElement('span')
+  feedback.setAttribute(EXT_ATTR, 'inline-feedback')
+  feedback.style.cssText = `font-size:11px;font-family:${MONO};`
+  actions.appendChild(feedback)
+
+  const reviewBtn = document.createElement('button')
+  reviewBtn.type = 'button'
+  reviewBtn.textContent = 'REVISAR'
+  reviewBtn.style.cssText = `background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:4px;padding:4px 10px;font-size:11px;font-weight:600;letter-spacing:0.5px;cursor:pointer;font-family:${FONT};transition:background 0.15s;`
+  reviewBtn.addEventListener('mouseenter', () => { reviewBtn.style.background = '#e5e7eb' })
+  reviewBtn.addEventListener('mouseleave', () => { reviewBtn.style.background = '#f3f4f6' })
+  reviewBtn.addEventListener('click', () => {
+    removeInlineConfirm(modal)
+    showReviewModal(data)
+  })
+  actions.appendChild(reviewBtn)
+
+  const sendBtn = document.createElement('button')
+  sendBtn.type = 'button'
+  sendBtn.setAttribute(EXT_ATTR, 'inline-send-btn')
+  sendBtn.textContent = 'ENVIAR'
+  sendBtn.disabled = !hasConfig
+  sendBtn.style.cssText = `background:#2563eb;color:white;border:none;border-radius:4px;padding:4px 12px;font-size:11px;font-weight:600;letter-spacing:0.5px;cursor:${hasConfig ? 'pointer' : 'not-allowed'};opacity:${hasConfig ? '1' : '0.5'};font-family:${FONT};transition:background 0.15s;`
+  sendBtn.addEventListener('mouseenter', () => { if (!sendBtn.disabled) sendBtn.style.background = '#1d4ed8' })
+  sendBtn.addEventListener('mouseleave', () => { if (!sendBtn.disabled) sendBtn.style.background = '#2563eb' })
+
+  sendBtn.addEventListener('click', async () => {
+    if (sendBtn.disabled) return
+    sendBtn.disabled      = true
+    sendBtn.textContent   = 'ENVIANDO…'
+    sendBtn.style.opacity = '0.7'
+    sendBtn.style.cursor  = 'not-allowed'
+    reviewBtn.disabled    = true
+    feedback.textContent  = ''
+
+    const payload = {
+      fornecedor:   data.fornecedor,
+      numero_nfe:   data.numero_nfe,
+      valor_frete:  freteUnits / 100,
+      items:        data.items,
+      exportado_em: new Date().toISOString(),
+    }
+
+    const showInlineError = (msg: string) => {
+      wrap.style.background  = '#fef2f2'
+      wrap.style.borderColor = '#fecaca'
+      feedback.style.color   = '#dc2626'
+      feedback.textContent   = '✗ ' + msg
+      sendBtn.disabled      = false
+      sendBtn.textContent   = 'ENVIAR'
+      sendBtn.style.opacity = '1'
+      sendBtn.style.cursor  = 'pointer'
+      reviewBtn.disabled    = false
+    }
+
+    chrome.runtime.sendMessage(
+      { action: 'sendConciliacao', baseUrl: settings.baseUrl, endpointConciliacao: settings.endpointConciliacao, apiKey: settings.apiKey, extraHeaders: settings.extraHeaders, payload },
+      (resp: { ok: boolean; status?: number; json?: { success: boolean; message?: string; url?: string } | null; rawText?: string; error?: string }) => {
+        if (chrome.runtime.lastError || resp.error) {
+          showInlineError(resp?.error ?? chrome.runtime.lastError?.message ?? 'Erro desconhecido')
+          return
+        }
+        if (resp.ok && resp.json?.success) {
+          wrap.style.background  = '#f0fdf4'
+          wrap.style.borderColor = '#86efac'
+          feedback.style.color   = '#16a34a'
+          feedback.textContent   = '✓ ' + (resp.json.message ?? 'Enviado com sucesso.')
+          sendBtn.textContent      = 'ENVIADO'
+          sendBtn.style.background = '#16a34a'
+          sendBtn.style.opacity    = '1'
+          if (resp.json.url) {
+            try {
+              const url = new URL(resp.json.url, settings.baseUrl ?? '').href
+              const link = document.createElement('a')
+              link.href   = url
+              link.target = '_blank'
+              link.rel    = 'noopener'
+              link.style.cssText = `font-size:11px;color:#2563eb;text-decoration:none;font-weight:500;`
+              link.textContent   = '↗ Abrir no sistema'
+              actions.insertBefore(link, sendBtn)
+            } catch { /* invalid URL */ }
+          }
+        } else {
+          showInlineError(resp.json?.message ?? `HTTP ${resp.status}`)
+        }
+      }
+    )
+  })
+
+  if (!hasConfig) {
+    feedback.style.color = '#92400e'
+    feedback.textContent = '⚙ Configure endpoint e API Key nas opções'
+  }
+
+  actions.appendChild(sendBtn)
+  wrap.appendChild(actions)
+
+  // Insert after .modal-header
+  const header = modal.querySelector('.modal-header')
+  if (header?.nextSibling) header.parentNode!.insertBefore(wrap, header.nextSibling)
+  else modal.appendChild(wrap)
 }
 
 // ── Feature 1: "Conciliar" button in the SAIPOS modal ────────────────────────
@@ -783,12 +906,15 @@ function injectModalButton(modal: Element) {
     const data = extractDataFromDOM()
     if ('error' in data) {
       const orig = btn.textContent!
-      btn.textContent    = '⚠ Modal não encontrada'
+      btn.textContent      = '⚠ Modal não encontrada'
       btn.style.background = '#d97706'
       setTimeout(() => { btn.textContent = orig; btn.style.background = '#2563eb' }, 3000)
       return
     }
-    await showReviewModal(data)
+    // Remove any existing inline confirm before re-opening
+    removeInlineConfirm(modal)
+    const settings = await getSettings()
+    showInlineConfirm(modal, data, settings)
   })
 
   const titleEl = header.querySelector('.modal-title')
