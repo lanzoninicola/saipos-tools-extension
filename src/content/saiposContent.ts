@@ -713,20 +713,24 @@ function showInlineConfirm(modal: Element, data: ConciliacaoData, settings: Sett
   wrap.style.cssText = [
     `font-family:${FONT}`,
     'display:flex',
-    'align-items:center',
-    'flex-wrap:wrap',
-    'gap:6px 12px',
+    'flex-direction:column',
+    'gap:4px',
     'margin-left:14px',
-    'padding:4px 10px',
+    'padding:6px 10px',
     'background:#f0fdf4',
     'border:1px solid #bbf7d0',
     'border-radius:6px',
     'flex:1',
+    'min-width:0',
   ].join(';')
+
+  // Row 1: checks + frete (left) | buttons (right)
+  const row1 = document.createElement('div')
+  row1.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;'
 
   // Left: checks + item count + frete
   const left = document.createElement('div')
-  left.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;flex:1;'
+  left.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;flex:1;min-width:0;'
 
   const mkCheck = (label: string, value: string) => {
     const span = document.createElement('span')
@@ -782,16 +786,24 @@ function showInlineConfirm(modal: Element, data: ConciliacaoData, settings: Sett
   freteWrap.appendChild(freteInput)
   left.appendChild(freteWrap)
 
-  wrap.appendChild(left)
-
-  // Right: feedback + buttons
+  // Right: buttons only
   const actions = document.createElement('div')
-  actions.style.cssText = 'display:flex;align-items:center;gap:8px;flex-shrink:0;'
+  actions.style.cssText = 'display:flex;align-items:center;gap:6px;flex-shrink:0;'
 
-  const feedback = document.createElement('span')
-  feedback.setAttribute(EXT_ATTR, 'inline-feedback')
-  feedback.style.cssText = `font-size:11px;font-family:${MONO};`
-  actions.appendChild(feedback)
+  const reloadBtn = document.createElement('button')
+  reloadBtn.type = 'button'
+  reloadBtn.title = 'Recarregar dados'
+  reloadBtn.innerHTML = '&#x21BA;'
+  reloadBtn.style.cssText = `background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:4px;padding:2px 7px;font-size:14px;line-height:1;cursor:pointer;font-family:${FONT};transition:background 0.15s;`
+  reloadBtn.addEventListener('mouseenter', () => { reloadBtn.style.background = '#e5e7eb' })
+  reloadBtn.addEventListener('mouseleave', () => { reloadBtn.style.background = '#f3f4f6' })
+  reloadBtn.addEventListener('click', async () => {
+    const fresh = extractDataFromDOM()
+    if ('error' in fresh || !isDataReady(fresh)) return
+    const s = await getSettings()
+    showInlineConfirm(modal, fresh, s)
+  })
+  actions.appendChild(reloadBtn)
 
   const reviewBtn = document.createElement('button')
   reviewBtn.type = 'button'
@@ -800,7 +812,6 @@ function showInlineConfirm(modal: Element, data: ConciliacaoData, settings: Sett
   reviewBtn.addEventListener('mouseenter', () => { reviewBtn.style.background = '#e5e7eb' })
   reviewBtn.addEventListener('mouseleave', () => { reviewBtn.style.background = '#f3f4f6' })
   reviewBtn.addEventListener('click', () => {
-    removeInlineConfirm(modal)
     showReviewModal(data)
   })
   actions.appendChild(reviewBtn)
@@ -809,8 +820,9 @@ function showInlineConfirm(modal: Element, data: ConciliacaoData, settings: Sett
   sendBtn.type = 'button'
   sendBtn.setAttribute(EXT_ATTR, 'inline-send-btn')
   sendBtn.textContent = 'ENVIAR'
-  sendBtn.disabled = !hasConfig
-  sendBtn.style.cssText = `background:#2563eb;color:white;border:none;border-radius:4px;padding:4px 12px;font-size:11px;font-weight:600;letter-spacing:0.5px;cursor:${hasConfig ? 'pointer' : 'not-allowed'};opacity:${hasConfig ? '1' : '0.5'};font-family:${FONT};transition:background 0.15s;`
+  const canSend = hasConfig && data.items.length > 0
+  sendBtn.disabled = !canSend
+  sendBtn.style.cssText = `background:#2563eb;color:white;border:none;border-radius:4px;padding:4px 12px;font-size:11px;font-weight:600;letter-spacing:0.5px;cursor:${canSend ? 'pointer' : 'not-allowed'};opacity:${canSend ? '1' : '0.5'};font-family:${FONT};transition:background 0.15s;`
   sendBtn.addEventListener('mouseenter', () => { if (!sendBtn.disabled) sendBtn.style.background = '#1d4ed8' })
   sendBtn.addEventListener('mouseleave', () => { if (!sendBtn.disabled) sendBtn.style.background = '#2563eb' })
 
@@ -820,8 +832,9 @@ function showInlineConfirm(modal: Element, data: ConciliacaoData, settings: Sett
     sendBtn.textContent   = 'ENVIANDO…'
     sendBtn.style.opacity = '0.7'
     sendBtn.style.cursor  = 'not-allowed'
-    reviewBtn.disabled    = true
-    feedback.textContent  = ''
+    reviewBtn.disabled     = true
+    feedback.style.display = 'none'
+    feedback.textContent   = ''
 
     const payload = {
       fornecedor:   data.fornecedor,
@@ -834,6 +847,7 @@ function showInlineConfirm(modal: Element, data: ConciliacaoData, settings: Sett
     const showInlineError = (msg: string) => {
       wrap.style.background  = '#fef2f2'
       wrap.style.borderColor = '#fecaca'
+      feedback.style.display = 'block'
       feedback.style.color   = '#dc2626'
       feedback.textContent   = '✗ ' + msg
       sendBtn.disabled      = false
@@ -853,6 +867,7 @@ function showInlineConfirm(modal: Element, data: ConciliacaoData, settings: Sett
         if (resp.ok && resp.json?.success) {
           wrap.style.background  = '#f0fdf4'
           wrap.style.borderColor = '#86efac'
+          feedback.style.display = 'block'
           feedback.style.color   = '#16a34a'
           feedback.textContent   = '✓ ' + (resp.json.message ?? 'Enviado com sucesso.')
           sendBtn.textContent      = 'ENVIADO'
@@ -877,13 +892,29 @@ function showInlineConfirm(modal: Element, data: ConciliacaoData, settings: Sett
     )
   })
 
-  if (!hasConfig) {
-    feedback.style.color = '#92400e'
-    feedback.textContent = '⚙ Configure endpoint e API Key nas opções'
-  }
-
   actions.appendChild(sendBtn)
-  wrap.appendChild(actions)
+
+  row1.appendChild(left)
+  row1.appendChild(actions)
+  wrap.appendChild(row1)
+
+  // Row 2: feedback (full-width, hidden until needed)
+  const feedback = document.createElement('div')
+  feedback.setAttribute(EXT_ATTR, 'inline-feedback')
+  feedback.style.cssText = `display:none;font-size:11px;font-family:${MONO};word-break:break-word;`
+  wrap.appendChild(feedback)
+
+  if (data.items.length === 0) {
+    wrap.style.background  = '#fef2f2'
+    wrap.style.borderColor = '#fecaca'
+    feedback.style.display = 'block'
+    feedback.style.color   = '#dc2626'
+    feedback.textContent   = '✗ Produtos não extraídos — pressione ↺ para tentar novamente.'
+  } else if (!hasConfig) {
+    feedback.style.display = 'block'
+    feedback.style.color   = '#92400e'
+    feedback.textContent   = '⚙ Configure endpoint e API Key nas opções'
+  }
 
   // Inject inside .modal-header, making it flex to accommodate the confirm strip
   const header = modal.querySelector('.modal-header') as HTMLElement | null
@@ -899,43 +930,55 @@ function showInlineConfirm(modal: Element, data: ConciliacaoData, settings: Sett
 
 // ── Feature 1: "Conciliar" button in the SAIPOS modal ────────────────────────
 
+// Returns true when extractDataFromDOM has real content (not just an open modal with empty data)
+function isDataReady(data: ConciliacaoData): boolean {
+  return !!(data.fornecedor && data.numero_nfe && data.items.length > 0)
+}
+
 function injectModalButton(modal: Element) {
   if (modal.querySelector(`[${EXT_ATTR}="modal-btn"]`)) return
 
   const header = modal.querySelector('.modal-header')
   if (!header) return
 
-  const btn = document.createElement('button')
-  btn.setAttribute(EXT_ATTR, 'modal-btn')
-  btn.type = 'button'
-  btn.textContent = 'Conciliar'
-  btn.style.cssText = [
-    'background:#2563eb', 'color:white', 'border:none', 'border-radius:4px',
-    'padding:4px 10px', 'font-size:12px', 'cursor:pointer', 'font-weight:500',
-    'margin-left:10px', 'vertical-align:middle', 'transition:background 0.15s',
-    `font-family:${FONT}`,
-  ].join(';')
-  btn.addEventListener('mouseenter', () => { btn.style.background = '#1d4ed8' })
-  btn.addEventListener('mouseleave', () => { btn.style.background = '#2563eb' })
+  // Sentinel element — no visible button, just marks this modal as processed
+  const sentinel = document.createElement('span')
+  sentinel.setAttribute(EXT_ATTR, 'modal-btn')
+  sentinel.style.display = 'none'
+  header.appendChild(sentinel)
 
-  btn.addEventListener('click', async () => {
-    const data = extractDataFromDOM()
-    if ('error' in data) {
-      const orig = btn.textContent!
-      btn.textContent      = '⚠ Modal não encontrada'
-      btn.style.background = '#d97706'
-      setTimeout(() => { btn.textContent = orig; btn.style.background = '#2563eb' }, 3000)
-      return
-    }
-    // Remove any existing inline confirm before re-opening
-    removeInlineConfirm(modal)
+  // Auto-show inline confirm once Angular has rendered modal data
+  ;(async () => {
     const settings = await getSettings()
-    showInlineConfirm(modal, data, settings)
-  })
 
-  const titleEl = header.querySelector('.modal-title')
-  if (titleEl) titleEl.appendChild(btn)
-  else header.appendChild(btn)
+    const tryShow = () => {
+      const d = extractDataFromDOM()
+      if ('error' in d || !isDataReady(d)) return false
+      showInlineConfirm(modal, d, settings)
+      return true
+    }
+
+    if (tryShow()) return
+
+    // Observe modal subtree until data is ready (max 5s)
+    let done = false
+    const deadline = setTimeout(() => {
+      obs.disconnect()
+      done = true
+      // Show bar with whatever partial data is available so the user sees the error + ↺
+      const partial = extractDataFromDOM()
+      const d = ('error' in partial) ? { fornecedor: '', numero_nfe: '', items: [] } : partial
+      showInlineConfirm(modal, d, settings)
+    }, 5000)
+    const obs = new MutationObserver(() => {
+      if (done) return
+      if (!tryShow()) return
+      obs.disconnect()
+      clearTimeout(deadline)
+      done = true
+    })
+    obs.observe(modal, { childList: true, subtree: true, characterData: true })
+  })()
 }
 
 // ── Error debug popover ───────────────────────────────────────────────────────
