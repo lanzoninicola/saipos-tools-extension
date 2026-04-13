@@ -689,7 +689,15 @@ async function showReviewModal(data: ConciliacaoData) {
 // ── Inline confirmation node ──────────────────────────────────────────────────
 
 function removeInlineConfirm(modal: Element) {
-  modal.querySelector(`[${EXT_ATTR}="inline-confirm"]`)?.remove()
+  const existing = modal.querySelector(`[${EXT_ATTR}="inline-confirm"]`) as HTMLElement | null
+  if (!existing) return
+  const header = existing.parentElement
+  existing.remove()
+  if (header?.classList.contains('modal-header')) {
+    header.style.display    = ''
+    header.style.alignItems = ''
+    header.style.flexWrap   = ''
+  }
 }
 
 function showInlineConfirm(modal: Element, data: ConciliacaoData, settings: Settings) {
@@ -704,19 +712,21 @@ function showInlineConfirm(modal: Element, data: ConciliacaoData, settings: Sett
   wrap.setAttribute(EXT_ATTR, 'inline-confirm')
   wrap.style.cssText = [
     `font-family:${FONT}`,
-    'padding:10px 16px',
-    'background:#f0fdf4',
-    'border-bottom:1px solid #bbf7d0',
     'display:flex',
     'align-items:center',
-    'justify-content:space-between',
     'flex-wrap:wrap',
-    'gap:8px',
+    'gap:6px 12px',
+    'margin-left:14px',
+    'padding:4px 10px',
+    'background:#f0fdf4',
+    'border:1px solid #bbf7d0',
+    'border-radius:6px',
+    'flex:1',
   ].join(';')
 
   // Left: checks + item count + frete
   const left = document.createElement('div')
-  left.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;'
+  left.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;flex:1;'
 
   const mkCheck = (label: string, value: string) => {
     const span = document.createElement('span')
@@ -875,10 +885,16 @@ function showInlineConfirm(modal: Element, data: ConciliacaoData, settings: Sett
   actions.appendChild(sendBtn)
   wrap.appendChild(actions)
 
-  // Insert after .modal-header
-  const header = modal.querySelector('.modal-header')
-  if (header?.nextSibling) header.parentNode!.insertBefore(wrap, header.nextSibling)
-  else modal.appendChild(wrap)
+  // Inject inside .modal-header, making it flex to accommodate the confirm strip
+  const header = modal.querySelector('.modal-header') as HTMLElement | null
+  if (header) {
+    header.style.display     = 'flex'
+    header.style.alignItems  = 'center'
+    header.style.flexWrap    = 'wrap'
+    header.appendChild(wrap)
+  } else {
+    modal.appendChild(wrap)
+  }
 }
 
 // ── Feature 1: "Conciliar" button in the SAIPOS modal ────────────────────────
